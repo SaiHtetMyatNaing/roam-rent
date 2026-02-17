@@ -1,11 +1,11 @@
 import React from 'react';
 import Link from 'next/link';
-import { ArrowRight, ShieldCheck, Clock, Sparkles, Star } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Clock, Sparkles, Star, Icon } from 'lucide-react';
 
 /**
  * FeatureCard Component
  */
-const FeatureCard = ({ icon: Icon, title, description }) => (
+const FeatureCard = ({ icon, title, description }) => (
   <div className="flex items-center p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow transition-shadow duration-300 w-full max-w-md">
     <div className="flex-shrink-0 p-3 bg-blue-50 rounded-lg text-blue-600 mr-4">
       <Icon size={24} strokeWidth={2} />
