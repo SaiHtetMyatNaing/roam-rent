@@ -1,7 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Repeat, Star, CalendarCheck } from 'lucide-react';
+import { 
+  Mail, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  AlertCircle, 
+  CheckCircle2, 
+  CalendarCheck, 
+  Star, 
+  Repeat 
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
@@ -23,9 +33,10 @@ export default function SignInPage() {
     setIsLoading(true);
 
     try {
+      // Fetch user from 'users' table
       const { data: user, error: fetchError } = await supabase
         .from('users')
-        .select('id, password_hash, status')
+        .select('id, password_hash, status, first_name, avatar_url, role')
         .eq('email', email.trim().toLowerCase())
         .single();
 
@@ -34,17 +45,35 @@ export default function SignInPage() {
       }
 
       if (user.status !== 'active') {
-        throw new Error('Account is not active');
+        throw new Error('Account is not active. Please contact support.');
       }
 
       if (user.password_hash !== password) {
         throw new Error('Incorrect password');
       }
 
+      // ──────────────────────────────────────────────
+      // CRITICAL: Save login state so Navbar detects it
+      // ──────────────────────────────────────────────
+      localStorage.setItem('user_email', email.trim().toLowerCase());
+
+      // Force Navbar to refresh immediately (same tab)
+      window.dispatchEvent(new Event('storage'));
+
+      // Optional: also store basic user info for faster UI
+      localStorage.setItem('user_data', JSON.stringify({
+        first_name: user.first_name || '',
+        avatar_url: user.avatar_url || null,
+        role: user.role
+      }));
+
       setSuccess(true);
+
+      // Short delay to show success message
       setTimeout(() => {
         router.push('/vehicles');
       }, 1200);
+
     } catch (err: any) {
       setError(err.message || 'Invalid email or password');
     } finally {
@@ -59,8 +88,8 @@ export default function SignInPage() {
           <div className="w-16 h-16 bg-green-100 text-green-600 rounded-md flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={32} />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-3">Signed In</h2>
-          <p className="text-slate-600 mb-8">Redirecting to vehicles...</p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-3">Signed In Successfully</h2>
+          <p className="text-slate-600 mb-8">Redirecting to vehicles page...</p>
         </div>
       </div>
     );

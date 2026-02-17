@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'jqjmzqcgunzqjneltoou.supabase.co',  // From dashboard > Settings > API
+      },
+    ],
+  },
 };
 
 export default nextConfig;
