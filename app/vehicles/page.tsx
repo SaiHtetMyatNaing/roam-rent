@@ -483,10 +483,11 @@ function CarThumb({ car }: { car: Vehicle }) {
 }
 
 // ─── Step 1: Details ──────────────────────────────────────────────────────────
-function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose }: {
+function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose, isAuthenticated }: {
   car: Vehicle; isWishlisted: boolean;
   onToggleWishlist: (id: string) => void;
   onNext: () => void; onClose: () => void;
+  isAuthenticated: boolean;
 }) {
   const images = car.vehicle_images ?? [];
   const allImgUrls = images.map((i) => i.publicUrl ?? i.url ?? placeholderImage(car.type));
@@ -604,11 +605,25 @@ function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose }: {
             </div>
           </div>
           <button
-            onClick={onNext}
+            onClick={() => {
+              if (!isAuthenticated) {
+                window.location.href = '/sign-in';
+                return;
+              }
+              onNext();
+            }}
             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white
               px-10 py-4 rounded-md font-bold text-sm tracking-wide transition-colors active:scale-95 shadow-lg shadow-blue-500/20"
           >
-            Book Now <ArrowRight size={16} />
+            {isAuthenticated ? (
+              <>
+                Book Now <ArrowRight size={16} />
+              </>
+            ) : (
+              <>
+                Sign In to Book <ArrowRight size={16} />
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -840,9 +855,10 @@ interface DetailDialogProps {
   isWishlisted: boolean;
   onToggleWishlist: (id: string) => void;
   onClose: () => void;
+  isAuthenticated: boolean;
 }
 
-function DetailDialog({ car, isWishlisted, onToggleWishlist, onClose }: DetailDialogProps) {
+function DetailDialog({ car, isWishlisted, onToggleWishlist, onClose, isAuthenticated }: DetailDialogProps) {
   const supabase = createClient();
   const [step, setStep] = useState<Step>("details");
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
@@ -909,7 +925,7 @@ function DetailDialog({ car, isWishlisted, onToggleWishlist, onClose }: DetailDi
 
         {step === "details" && (
           <DetailsStep car={car} isWishlisted={isWishlisted} onToggleWishlist={onToggleWishlist}
-            onNext={() => setStep("booking")} onClose={onClose} />
+            onNext={() => setStep("booking")} onClose={onClose} isAuthenticated={isAuthenticated} />
         )}
         {step === "booking" && (
           <BookingStep car={car} onBack={() => setStep("details")}
@@ -938,8 +954,22 @@ export default function App(): JSX.Element {
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [stagedFilters, setStagedFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const supabase = createClient();
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = () => {
+      const userEmail = localStorage.getItem('user_email');
+      setIsAuthenticated(!!userEmail);
+    };
+    
+    checkAuth();
+    // Listen for storage changes (in case user signs in/out from other tabs)
+    window.addEventListener('storage', checkAuth);
+    return () => window.removeEventListener('storage', checkAuth);
+  }, []);
 
   const getPublicUrl = useCallback((path: string): string => {
     const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
@@ -1117,7 +1147,8 @@ export default function App(): JSX.Element {
         <DetailDialog car={selectedCar}
           isWishlisted={wishlist.has(selectedCar.id)}
           onToggleWishlist={toggleWishlist}
-          onClose={() => setSelectedCar(null)} />
+          onClose={() => setSelectedCar(null)}
+          isAuthenticated={isAuthenticated} />
       )}
     </div>
   );
