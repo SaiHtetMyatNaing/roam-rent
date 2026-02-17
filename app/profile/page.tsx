@@ -146,7 +146,7 @@ export default function ProfilePage() {
       { icon: Settings, label: 'Settings', href: '/profile/settings' },
       { icon: LogOut, label: 'Logout', href: '#', onClick: handleLogout },
     ],
-    'car-owner': [
+    'vehicle-owner': [
       { icon: User, label: 'My Profile', href: '/profile', active: true },
       { icon: Car, label: 'My Vehicles', href: '/owner-dashboard/vehicles' },
       { icon: DollarSign, label: 'Earnings', href: '/owner-dashboard/earnings' },
