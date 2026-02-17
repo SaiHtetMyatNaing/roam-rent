@@ -305,7 +305,7 @@ export default function RegisterPage() {
         </div>
 
         {/* RIGHT SECTION - Register Form (wider) */}
-        <div className="lg:col-span-3 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+        <div className="lg:col-span-3 bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="p-8 lg:p-12">
             <h2 className="text-3xl font-bold text-slate-900 mb-2 text-center">
               Create Your Account
