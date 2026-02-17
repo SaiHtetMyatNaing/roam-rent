@@ -138,7 +138,6 @@ function RescheduleModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
             <h2 className="font-bold text-gray-900 text-xl">Reschedule Booking</h2>
@@ -152,7 +151,6 @@ function RescheduleModal({
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Current summary */}
           <div className="bg-blue-50/40 rounded-lg p-4 text-sm border border-blue-100">
             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">Current Booking</p>
             <div className="grid grid-cols-3 gap-4">
@@ -171,7 +169,6 @@ function RescheduleModal({
             </div>
           </div>
 
-          {/* New dates */}
           <div>
             <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">New Dates</p>
             <div className="grid grid-cols-2 gap-4">
@@ -201,7 +198,6 @@ function RescheduleModal({
             </div>
           </div>
 
-          {/* Price preview */}
           {days > 0 && (
             <div className="flex items-center justify-between bg-blue-50 rounded-lg px-5 py-4 border border-blue-100">
               <span className="text-sm text-gray-700">{days} day{days !== 1 ? 's' : ''} × ${booking.vehicle?.price_per_day ?? 0}/day</span>
@@ -209,7 +205,6 @@ function RescheduleModal({
             </div>
           )}
 
-          {/* Locations */}
           <div>
             <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Locations</p>
             <div className="space-y-4">
@@ -243,10 +238,7 @@ function RescheduleModal({
           )}
 
           <div className="flex gap-4 pt-2">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={onClose} className="flex-1 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
             </button>
             <button
@@ -316,10 +308,7 @@ function CancelModal({
         )}
 
         <div className="flex gap-4">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-          >
+          <button onClick={onClose} className="flex-1 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
             Keep Booking
           </button>
           <button
@@ -381,8 +370,20 @@ export default function MyBookingsPage() {
         .eq('customer_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (err) setError(err.message);
-      else setBookings((data ?? []) as Booking[]);
+      if (err) {
+        setError(err.message);
+      } else {
+        // ✅ Fix: Supabase returns vehicle as an array due to the join.
+        // We normalize it to a single object (or null) to match our Booking type.
+        const normalized: Booking[] = (data ?? []).map((row: any) => ({
+          ...row,
+          vehicle: Array.isArray(row.vehicle)
+            ? (row.vehicle[0] ?? null)
+            : (row.vehicle ?? null),
+        }));
+        setBookings(normalized);
+      }
+
       setLoading(false);
     };
 
@@ -400,14 +401,14 @@ export default function MyBookingsPage() {
   });
 
   const stats = {
-    total:   bookings.length,
+    total:    bookings.length,
     upcoming: bookings.filter(b => b.status === 'upcoming').length,
-    ongoing: bookings.filter(b => b.status === 'ongoing').length,
-    spent:   bookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_price, 0),
+    ongoing:  bookings.filter(b => b.status === 'ongoing').length,
+    spent:    bookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_price, 0),
   };
 
   const canReschedule = (status: BookingStatus) => status === 'pending' || status === 'upcoming';
-  const canCancel    = (status: BookingStatus) => status === 'pending' || status === 'upcoming';
+  const canCancel     = (status: BookingStatus) => status === 'pending' || status === 'upcoming';
 
   if (loading) {
     return (
@@ -491,7 +492,7 @@ export default function MyBookingsPage() {
         </div>
       </div>
 
-      {/* Bookings */}
+      {/* Bookings List */}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-5">
         {filtered.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
@@ -539,13 +540,14 @@ export default function MyBookingsPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="font-semibold text-gray-900 text-lg truncate">
-                          {booking.vehicle ? `${booking.vehicle.make} ${booking.vehicle.model} · ${booking.vehicle.year}` : 'Vehicle unavailable'}
+                          {booking.vehicle
+                            ? `${booking.vehicle.make} ${booking.vehicle.model} · ${booking.vehicle.year}`
+                            : 'Vehicle unavailable'}
                         </p>
                         <p className="text-sm text-gray-600 mt-0.5">
                           {booking.pickup_location} → {booking.dropoff_location}
                         </p>
                       </div>
-
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`}>
                         {cfg.icon} {cfg.label}
                       </span>
@@ -556,16 +558,14 @@ export default function MyBookingsPage() {
                         <Calendar size={14} className="text-gray-400" />
                         {formatDate(booking.pickup_date)} → {formatDate(booking.dropoff_date)}
                       </span>
-                      <span className="font-medium text-blue-700">
-                        ${booking.total_price.toFixed(2)}
-                      </span>
+                      <span className="font-medium text-blue-700">${booking.total_price.toFixed(2)}</span>
                       <span className="text-gray-500">· {days} day{days !== 1 ? 's' : ''}</span>
                     </div>
                   </div>
 
                   <ChevronDown
                     size={20}
-                    className={`text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`text-gray-500 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                   />
                 </div>
 
@@ -615,9 +615,7 @@ export default function MyBookingsPage() {
                           </div>
                           <div className="flex justify-between pt-2 border-t border-gray-200 mt-1">
                             <span className="font-bold text-gray-900">Total</span>
-                            <span className="font-bold text-blue-800 text-lg">
-                              ${booking.total_price.toFixed(2)}
-                            </span>
+                            <span className="font-bold text-blue-800 text-lg">${booking.total_price.toFixed(2)}</span>
                           </div>
                         </div>
                       </div>
