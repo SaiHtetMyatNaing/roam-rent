@@ -1,11 +1,17 @@
 import React from 'react';
 import Link from 'next/link';
-import { ArrowRight, ShieldCheck, Clock, Sparkles, Star, Icon } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Clock, Sparkles, Star } from 'lucide-react';
 
 /**
  * FeatureCard Component
  */
-const FeatureCard = ({ icon, title, description }) => (
+interface FeatureCardProps {
+  icon: React.ComponentType<any>;
+  title: string;
+  description: string;
+}
+
+const FeatureCard = ({ icon: Icon, title, description }: FeatureCardProps) => (
   <div className="flex items-center p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow transition-shadow duration-300 w-full max-w-md">
     <div className="flex-shrink-0 p-3 bg-blue-50 rounded-lg text-blue-600 mr-4">
       <Icon size={24} strokeWidth={2} />
@@ -20,7 +26,13 @@ const FeatureCard = ({ icon, title, description }) => (
 /**
  * StatItem Component
  */
-const StatItem = ({ value, label, showStar }) => (
+interface StatItemProps {
+  value: string;
+  label: string;
+  showStar?: boolean;
+}
+
+const StatItem = ({ value, label, showStar }: StatItemProps) => (
   <div className="flex flex-col">
     <div className="flex items-center gap-1.5">
       <span className="text-3xl font-extrabold text-slate-900 leading-tight">{value}</span>
