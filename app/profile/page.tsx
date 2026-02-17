@@ -1,0 +1,567 @@
+// app/profile/page.tsx
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { 
+  User, 
+  Settings, 
+  CreditCard, 
+  Calendar, 
+  Car, 
+  DollarSign, 
+  Shield, 
+  Users, 
+  CheckCircle, 
+  LogOut, 
+  Menu, 
+  X,
+  Edit,
+  Save,
+  MapPin,
+  Phone,
+  Mail,
+  Globe,
+  Info,
+  AlertCircle
+} from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import Link from 'next/link';
+
+const supabase = createClient();
+
+type UserRole = 'customer' | 'car-owner' | 'admin' | null;
+
+export default function ProfilePage() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const storedEmail = localStorage.getItem('user_email');
+      if (!storedEmail) {
+        router.replace('/sign-in');
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, phone, role, avatar_url, bio, address_street, address_city, address_state, address_zip, address_country')
+          .eq('email', storedEmail.trim().toLowerCase())
+          .single();
+
+        if (error || !data) {
+          localStorage.removeItem('user_email');
+          router.replace('/sign-in');
+          return;
+        }
+
+        setUser(data);
+        setEditForm(data);
+      } catch (err) {
+        console.error('Profile fetch error:', err);
+        router.replace('/sign-in');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUser();
+  }, [router]);
+
+  // FIX 1: Define handleLogout BEFORE it's used in sidebarItems
+  function handleLogout() {
+    localStorage.removeItem('user_email');
+    router.replace('/sign-in');
+  }
+
+  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setEditForm((prev: any) => ({ ...prev, [name]: value }));
+  };
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleSave = async () => {
+    if (!user) return;
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          first_name: editForm.first_name,
+          last_name: editForm.last_name,
+          phone: editForm.phone,
+          bio: editForm.bio,
+          address_street: editForm.address_street,
+          address_city: editForm.address_city,
+          address_state: editForm.address_state,
+          address_zip: editForm.address_zip,
+          address_country: editForm.address_country,
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setUser(editForm);
+      setIsEditing(false);
+      showToast('Profile updated successfully!', 'success');
+    } catch (err: any) {
+      console.error('Update error:', err);
+      showToast(err.message || 'Failed to save changes', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-600">Loading profile...</div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  const role = user.role as UserRole;
+
+  const sidebarItems = {
+    customer: [
+      { icon: User, label: 'My Profile', href: '/profile', active: true },
+      { icon: Calendar, label: 'My Bookings', href: '/bookings' },
+      { icon: CreditCard, label: 'Payment Methods', href: '/profile/payments' },
+      { icon: Settings, label: 'Settings', href: '/profile/settings' },
+      { icon: LogOut, label: 'Logout', href: '#', onClick: handleLogout },
+    ],
+    'car-owner': [
+      { icon: User, label: 'My Profile', href: '/profile', active: true },
+      { icon: Car, label: 'My Vehicles', href: '/owner-dashboard/vehicles' },
+      { icon: DollarSign, label: 'Earnings', href: '/owner-dashboard/earnings' },
+      { icon: Calendar, label: 'Bookings', href: '/owner-dashboard/bookings' },
+      { icon: Settings, label: 'Settings', href: '/profile/settings' },
+      { icon: LogOut, label: 'Logout', href: '#', onClick: handleLogout },
+    ],
+    admin: [
+      { icon: User, label: 'My Profile', href: '/profile', active: true },
+      { icon: Users, label: 'Manage Users', href: '/admin/users' },
+      { icon: Car, label: 'Approve Vehicles', href: '/admin/vehicles' },
+      { icon: Shield, label: 'System Settings', href: '/admin/settings' },
+      { icon: CheckCircle, label: 'Approvals', href: '/admin/approvals' },
+      { icon: LogOut, label: 'Logout', href: '#', onClick: handleLogout },
+    ],
+  };
+
+  const items = sidebarItems[role as 'customer' | 'car-owner' | 'admin'] || sidebarItems.customer;
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 max-w-sm w-full">
+          <div className={`
+            flex items-center gap-3 p-4 rounded-md shadow-lg text-white
+            ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}
+          `}>
+            {/* FIX 2: Use CheckCircle instead of the non-existent CheckCircle2 */}
+            {toast.type === 'success' ? (
+              <CheckCircle size={20} />
+            ) : (
+              <AlertCircle size={20} />
+            )}
+            <span className="flex-1">{toast.message}</span>
+            <button onClick={() => setToast(null)} className="text-white/80 hover:text-white">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex">
+        {/* Fixed Sidebar - Desktop */}
+        <aside className="hidden mt-14 md:block w-72 bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-30">
+          <div className="p-6">
+            {/* User Info */}
+            <div className="flex items-center gap-4 mb-12">
+              <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-blue-100 bg-slate-100 flex items-center justify-center flex-shrink-0">
+                {user.avatar_url ? (
+                  <Image
+                    src={user.avatar_url}
+                    alt="Avatar"
+                    width={64}
+                    height={64}
+                    className="object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <User size={32} className="text-slate-500" />
+                )}
+              </div>
+              <div>
+                <h2 className="font-semibold text-slate-900 text-lg">
+                  {user.first_name || 'User'} {user.last_name || ''}
+                </h2>
+                <p className="text-sm text-slate-500 capitalize">{role}</p>
+              </div>
+            </div>
+
+            {/* Menu Items */}
+            <nav className="space-y-1">
+              {items.map((item, idx) => (
+                <Link
+                  key={idx}
+                  href={item.href}
+                  onClick={item.onClick}
+                  className={`
+                    flex items-center gap-3 px-5 py-3.5 rounded-md text-slate-700 hover:bg-slate-100 transition-colors
+                    ${item.active ? 'bg-blue-50 text-blue-700 font-medium' : ''}
+                    ${item.label === 'Logout' ? 'mt-12 text-red-600 hover:bg-red-50' : ''}
+                  `}
+                >
+                  <item.icon size={20} />
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </aside>
+
+        {/* Mobile Sidebar Toggle */}
+        <div className="md:hidden fixed top-4 left-4 z-50">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-3 bg-white rounded-md border border-slate-200 shadow-sm"
+          >
+            <Menu size={24} />
+          </button>
+        </div>
+
+        {/* Mobile Sidebar */}
+        {isSidebarOpen && (
+          <div className="md:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setIsSidebarOpen(false)}>
+            <div 
+              className="absolute left-0 top-0 h-full w-80 bg-white shadow-xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-xl font-bold text-slate-900">Menu</h2>
+                  <button onClick={() => setIsSidebarOpen(false)}>
+                    <X size={28} />
+                  </button>
+                </div>
+
+                {/* User Info */}
+                <div className="flex items-center gap-4 mb-10">
+                  <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-blue-100 bg-slate-100 flex items-center justify-center">
+                    {user.avatar_url ? (
+                      <Image
+                        src={user.avatar_url}
+                        alt="Avatar"
+                        width={64}
+                        height={64}
+                        className="object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <User size={32} className="text-slate-500" />
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-slate-900 text-lg">
+                      {user.first_name || 'User'} {user.last_name || ''}
+                    </h2>
+                    <p className="text-sm text-slate-500 capitalize">{role}</p>
+                  </div>
+                </div>
+
+                {/* Menu Items */}
+                <nav className="space-y-1">
+                  {items.map((item, idx) => (
+                    <Link
+                      key={idx}
+                      href={item.href}
+                      onClick={item.onClick}
+                      className={`
+                        flex items-center gap-3 px-5 py-3.5 rounded-md text-slate-700 hover:bg-slate-100 transition-colors
+                        ${item.active ? 'bg-blue-50 text-blue-700 font-medium' : ''}
+                        ${item.label === 'Logout' ? 'mt-12 text-red-600 hover:bg-red-50' : ''}
+                      `}
+                    >
+                      <item.icon size={20} />
+                      <span>{item.label}</span>
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main Content - offset for fixed sidebar */}
+        <main className="flex-1 md:ml-72 p-6 md:p-10 min-h-screen">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">My Profile</h1>
+          <p className="text-slate-600 mb-10">Manage your personal information and preferences</p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Profile Overview Card */}
+            <div className="lg:col-span-1 bg-white border border-slate-200 rounded-md p-6">
+              <div className="text-center mb-8">
+                <div className="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 border-blue-100 bg-slate-100 flex items-center justify-center mb-4 relative">
+                  {user.avatar_url ? (
+                    <Image
+                      src={user.avatar_url}
+                      alt="Profile picture"
+                      width={128}
+                      height={128}
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <User size={64} className="text-slate-500" />
+                  )}
+                  <button className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2.5 shadow-md hover:bg-blue-700 transition-colors">
+                    <Edit size={16} />
+                  </button>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {user.first_name || 'User'} {user.last_name || ''}
+                </h2>
+                <p className="text-slate-500">{user.email}</p>
+                <p className="text-sm font-medium text-blue-600 mt-1 capitalize">{role}</p>
+              </div>
+
+              <div className="space-y-6 text-sm text-slate-600">
+                <div className="flex items-center gap-3">
+                  <Phone size={18} className="text-slate-500" />
+                  <span>{user.phone || 'Not provided'}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <MapPin size={18} className="text-slate-500" />
+                  <span>
+                    {user.address_city || 'Not provided'}, {user.address_country || 'Vietnam'}
+                  </span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Info size={18} className="text-slate-500 mt-0.5" />
+                  <span>{user.bio || 'No bio yet'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Personal Info Card (Editable) */}
+            <div className="lg:col-span-2 bg-white border border-slate-200 rounded-md p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-slate-900">Personal Information</h2>
+                {/* FIX 3: Header button now correctly calls handleSave when in editing mode */}
+                <button
+                  onClick={() => {
+                    if (isEditing) {
+                      handleSave();
+                    } else {
+                      setIsEditing(true);
+                    }
+                  }}
+                  disabled={loading && isEditing}
+                  className={`
+                    flex items-center gap-2 px-5 py-2.5 rounded-md text-sm font-medium transition-colors
+                    ${isEditing 
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'}
+                    ${loading && isEditing ? 'opacity-60 cursor-not-allowed' : ''}
+                  `}
+                >
+                  {isEditing ? (
+                    <>
+                      <Save size={16} />
+                      Save Changes
+                    </>
+                  ) : (
+                    <>
+                      <Edit size={16} />
+                      Edit Profile
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">First Name</label>
+                  {isEditing ? (
+                    <input
+                      name="first_name"
+                      value={editForm.first_name || ''}
+                      onChange={handleEditChange}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                    />
+                  ) : (
+                    <div className="py-3 px-4 bg-slate-50 rounded-md border border-slate-200 text-slate-800">
+                      {user.first_name || 'Not set'}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Last Name</label>
+                  {isEditing ? (
+                    <input
+                      name="last_name"
+                      value={editForm.last_name || ''}
+                      onChange={handleEditChange}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                    />
+                  ) : (
+                    <div className="py-3 px-4 bg-slate-50 rounded-md border border-slate-200 text-slate-800">
+                      {user.last_name || 'Not set'}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+                  <div className="py-3 px-4 bg-slate-50 rounded-md border border-slate-200 text-slate-600">
+                    {user.email}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone Number</label>
+                  {isEditing ? (
+                    <input
+                      name="phone"
+                      value={editForm.phone || ''}
+                      onChange={handleEditChange}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                    />
+                  ) : (
+                    <div className="py-3 px-4 bg-slate-50 rounded-md border border-slate-200 text-slate-800">
+                      {user.phone || 'Not set'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Bio</label>
+                  {isEditing ? (
+                    <textarea
+                      name="bio"
+                      value={editForm.bio || ''}
+                      onChange={handleEditChange}
+                      rows={4}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none resize-y transition-all"
+                    />
+                  ) : (
+                    <div className="py-3 px-4 bg-slate-50 rounded-md border border-slate-200 text-slate-800">
+                      {user.bio || 'No bio yet'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Address</label>
+                  {isEditing ? (
+                    <div className="space-y-3">
+                      <input
+                        name="address_street"
+                        value={editForm.address_street || ''}
+                        onChange={handleEditChange}
+                        placeholder="Street address"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          name="address_city"
+                          value={editForm.address_city || ''}
+                          onChange={handleEditChange}
+                          placeholder="City"
+                          className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                        />
+                        <input
+                          name="address_state"
+                          value={editForm.address_state || ''}
+                          onChange={handleEditChange}
+                          placeholder="State / Province"
+                          className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                        />
+                      </div>
+                      <input
+                        name="address_zip"
+                        value={editForm.address_zip || ''}
+                        onChange={handleEditChange}
+                        placeholder="Zip / Postal code"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                      />
+                      <input
+                        name="address_country"
+                        value={editForm.address_country || 'Vietnam'}
+                        onChange={handleEditChange}
+                        className="w-full px-4 py-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                      />
+                    </div>
+                  ) : (
+                    <div className="py-3 px-4 bg-slate-50 rounded-md border border-slate-200 text-slate-800">
+                      {user.address_street && <p>{user.address_street}</p>}
+                      <p>
+                        {user.address_city && `${user.address_city}, `}
+                        {user.address_state && `${user.address_state} `}
+                        {user.address_zip && user.address_zip}
+                      </p>
+                      <p>{user.address_country || 'Vietnam'}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="mt-10 flex gap-4">
+                  <button
+                    onClick={handleSave}
+                    disabled={loading}
+                    className={`
+                      flex items-center gap-2 px-6 py-3 rounded-md font-medium text-white transition-colors
+                      ${loading ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}
+                    `}
+                  >
+                    {loading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditForm(user);
+                    }}
+                    className="px-6 py-3 bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
