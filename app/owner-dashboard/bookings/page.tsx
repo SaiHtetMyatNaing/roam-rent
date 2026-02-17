@@ -104,7 +104,15 @@ export default function OwnerBookingsPage() {
       .order('created_at', { ascending: false });
 
     if (error) setError(error.message);
-    else setBookings((data ?? []) as Booking[]);
+    else {
+      // Transform the data to match the Booking type
+      const transformedData = (data ?? []).map((item: any) => ({
+        ...item,
+        customer: Array.isArray(item.customer) ? (item.customer[0] ?? null) : (item.customer ?? null),
+        vehicle: Array.isArray(item.vehicle) ? (item.vehicle[0] ?? null) : (item.vehicle ?? null),
+      }));
+      setBookings(transformedData as Booking[]);
+    }
     setLoading(false);
   };
 
