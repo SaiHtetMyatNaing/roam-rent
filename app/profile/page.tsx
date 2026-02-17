@@ -164,7 +164,7 @@ export default function ProfilePage() {
     ],
   };
 
-  const items = sidebarItems[role as 'customer' | 'car-owner' | 'admin'] || sidebarItems.customer;
+  const items = sidebarItems[role as 'customer' | 'vehicle-owner' | 'admin'] || sidebarItems.customer;
 
   return (
     <div className="min-h-screen bg-slate-50">
