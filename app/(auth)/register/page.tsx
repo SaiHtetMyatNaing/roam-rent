@@ -118,6 +118,47 @@ const SectionHeader = ({ icon: Icon, title }: { icon: any; title: string }) => (
 );
 
 export default function RegisterPage() {
+
+   const checkUser = async () => {
+    const storedEmail = localStorage.getItem('user_email');
+    console.log('Navbar checking localStorage:', storedEmail); // ← debug
+
+    if (!storedEmail) {
+      setCurrentUser(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, role, avatar_url, first_name')
+        .eq('email', storedEmail.trim().toLowerCase())
+        .single();
+
+      console.log('Supabase user fetch result:', { data, error }); // ← debug
+
+      if (error || !data) {
+        localStorage.removeItem('user_email');
+        setCurrentUser(null);
+      } else {
+        setCurrentUser({
+          id: data.id,
+          role: data.role as UserRole,
+          avatar_url: data.avatar_url,
+          first_name: data.first_name,
+        });
+      }
+    } catch (err) {
+      console.error('Navbar user check error:', err);
+      setCurrentUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  checkUser();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
