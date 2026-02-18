@@ -165,7 +165,7 @@ export default function ProfilePage() {
       { icon: Users,         label: 'Manage Users',      href: '/admin/users' },
       { icon: Car,           label: 'Approve Vehicles',  href: '/admin/vehicles' },
       { icon: MessageCircle, label: 'Disputes',          href: '/admin/disputes' },
-      { icon: Shield,        label: 'System Settings',   href: '/admin/settings' },
+      { icon: Shield,        label: 'System Settings',   href: '/admin/identity-verification' },
       { icon: CheckCircle,   label: 'Bookings',          href: '/admin-dashboard/bookings' },
       { icon: LogOut,        label: 'Logout',            href: '#', onClick: handleLogout },
     ],
