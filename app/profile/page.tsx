@@ -247,7 +247,6 @@ export default function ProfilePage() {
       { icon: DollarSign, label: 'Owner Dashboard', href: '/owner-dashboard/earning' },
       { icon: Calendar, label: 'Bookings', href: '/owner-dashboard/bookings' },
       { icon: MessageCircle, label: 'Support', href: '/support' },
-      { icon: Settings, label: 'Settings', href: '/profile/settings' },
       { icon: LogOut, label: 'Logout', href: '#', onClick: handleLogout },
     ],
     admin: [
