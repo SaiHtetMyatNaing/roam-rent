@@ -154,7 +154,7 @@ export default function ProfilePage() {
     'vehicle-owner': [
       { icon: User,          label: 'My Profile',        href: '/profile',                   active: true },
       { icon: Car,           label: 'My Vehicles',       href: '/owner-dashboard/vehicles' },
-      { icon: DollarSign,    label: 'Earnings',          href: '/owner-dashboard/earnings' },
+      { icon: DollarSign,    label: 'Earnings',          href: '/owner-dashboard/earning' },
       { icon: Calendar,      label: 'Bookings',          href: '/owner-dashboard/bookings' },
       { icon: MessageCircle, label: 'Support',           href: '/support' },
       { icon: Settings,      label: 'Settings',          href: '/profile/settings' },
