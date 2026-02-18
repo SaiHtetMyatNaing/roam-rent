@@ -14,6 +14,10 @@ import {
   DollarSign,
   Search,
   RefreshCw,
+  Flag,
+  X,
+  ChevronRight,
+  FileWarning,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -45,6 +49,8 @@ type Booking = {
   } | null;
 };
 
+type DisputePriority = 'low' | 'medium' | 'high' | 'critical';
+
 const STATUS_TABS = ['All', 'Pending', 'Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
@@ -55,20 +61,277 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   cancelled: { label: 'Cancelled', color: 'text-red-700',       bg: 'bg-red-50 border-red-200',        icon: <XCircle size={13} /> },
 };
 
+const PRIORITY_CONFIG: Record<DisputePriority, { label: string; color: string; bg: string; border: string }> = {
+  low:      { label: 'Low',      color: 'text-slate-600',  bg: 'bg-slate-50',   border: 'border-slate-200' },
+  medium:   { label: 'Medium',   color: 'text-amber-700',  bg: 'bg-amber-50',   border: 'border-amber-200' },
+  high:     { label: 'High',     color: 'text-orange-700', bg: 'bg-orange-50',  border: 'border-orange-200' },
+  critical: { label: 'Critical', color: 'text-red-700',    bg: 'bg-red-50',     border: 'border-red-200' },
+};
+
+const DISPUTE_CATEGORIES = [
+  'Vehicle Damage',
+  'Late Return',
+  'Unauthorized Use',
+  'Missing Items',
+  'Fuel Issue',
+  'Payment Dispute',
+  'No-Show',
+  'Other',
+];
+
 const NEXT_STATUSES: Partial<Record<Booking['status'], Booking['status'][]>> = {
   pending:  ['upcoming', 'cancelled'],
   upcoming: ['ongoing',  'cancelled'],
   ongoing:  ['completed'],
 };
 
+// ─── Dispute Modal ───────────────────────────────────────────────────────────
+
+type DisputeModalProps = {
+  booking: Booking;
+  submitterId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+};
+
+function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModalProps) {
+  const [title, setTitle]           = useState('');
+  const [category, setCategory]     = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority]     = useState<DisputePriority>('medium');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !category || !description.trim()) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+
+    const fullTitle = `[${category}] ${title.trim()}`;
+
+    const { error: dbError } = await supabase.from('disputes').insert({
+      booking_id:   booking.id,
+      submitted_by: submitterId,
+      title:        fullTitle,
+      description:  description.trim(),
+      priority,
+      status:       'open',
+    });
+
+    setSubmitting(false);
+
+    if (dbError) {
+      setError(dbError.message);
+    } else {
+      onSuccess();
+      onClose();
+    }
+  };
+
+  // Lock scroll
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  const vehicle = booking.vehicle;
+  const customer = booking.customer;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-red-100 rounded-lg flex items-center justify-center">
+              <Flag size={17} className="text-red-600" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 text-base">File a Dispute</h2>
+              <p className="text-xs text-gray-500">
+                {vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.year}` : 'Unknown vehicle'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+          >
+            <X size={15} className="text-gray-600" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {/* Booking reference */}
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm space-y-1">
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wide mb-2">Booking Reference</p>
+            <p>
+              <span className="text-gray-500">Customer: </span>
+              <span className="font-medium text-gray-800">
+                {customer ? `${customer.first_name} ${customer.last_name}` : '—'}
+              </span>
+            </p>
+            <p>
+              <span className="text-gray-500">Booking ID: </span>
+              <span className="font-mono text-xs text-gray-700">{booking.id.slice(0, 8)}…</span>
+            </p>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Category <span className="text-red-500">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {DISPUTE_CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategory(cat)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border text-left transition-all ${
+                    category === cat
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Title <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Brief description of the issue…"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Description <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={4}
+              placeholder="Provide as much detail as possible — what happened, when, and any evidence you have…"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none"
+            />
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Priority</label>
+            <div className="flex gap-2">
+              {(Object.keys(PRIORITY_CONFIG) as DisputePriority[]).map(p => {
+                const cfg = PRIORITY_CONFIG[p];
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPriority(p)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
+                      priority === p
+                        ? `${cfg.bg} ${cfg.color} ${cfg.border} shadow-sm ring-2 ring-offset-1 ring-blue-400`
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+              <AlertCircle size={15} className="flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
+          >
+            {submitting ? (
+              <RefreshCw size={16} className="animate-spin" />
+            ) : (
+              <Flag size={16} />
+            )}
+            {submitting ? 'Submitting…' : 'Submit Dispute'}
+          </button>
+
+          <p className="text-center text-xs text-gray-400">
+            Disputes are reviewed by our admin team within 24–48 hours.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Success Toast ────────────────────────────────────────────────────────────
+
+function SuccessToast({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 4000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 bg-white border border-green-200 rounded-xl shadow-xl px-5 py-4 flex items-center gap-3 animate-slide-up">
+      <div className="w-9 h-9 bg-green-100 rounded-full flex items-center justify-center">
+        <CheckCircle2 size={18} className="text-green-600" />
+      </div>
+      <div>
+        <p className="font-semibold text-gray-900 text-sm">Dispute submitted</p>
+        <p className="text-xs text-gray-500">Our team will review it within 24–48h</p>
+      </div>
+      <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600">
+        <X size={15} />
+      </button>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function OwnerBookingsPage() {
-  const [bookings, setBookings]   = useState<Booking[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('All');
+  const [bookings, setBookings]     = useState<Booking[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [activeTab, setActiveTab]   = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [expanded, setExpanded]   = useState<string | null>(null);
+  const [expanded, setExpanded]     = useState<string | null>(null);
+  const [ownerId, setOwnerId]       = useState<string | null>(null);
+
+  // Dispute state
+  const [disputeBooking, setDisputeBooking] = useState<Booking | null>(null);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const fetchBookings = async () => {
     setLoading(true);
@@ -79,6 +342,8 @@ export default function OwnerBookingsPage() {
       .from('users').select('id').eq('email', email.trim().toLowerCase()).single();
 
     if (!owner) { setError('Owner not found'); setLoading(false); return; }
+
+    setOwnerId(owner.id);
 
     const { data: ownerVehicles } = await supabase
       .from('vehicles').select('id').eq('owner_id', owner.id);
@@ -105,11 +370,10 @@ export default function OwnerBookingsPage() {
 
     if (error) setError(error.message);
     else {
-      // Transform the data to match the Booking type
       const transformedData = (data ?? []).map((item: any) => ({
         ...item,
         customer: Array.isArray(item.customer) ? (item.customer[0] ?? null) : (item.customer ?? null),
-        vehicle: Array.isArray(item.vehicle) ? (item.vehicle[0] ?? null) : (item.vehicle ?? null),
+        vehicle:  Array.isArray(item.vehicle)  ? (item.vehicle[0]  ?? null) : (item.vehicle  ?? null),
       }));
       setBookings(transformedData as Booking[]);
     }
@@ -135,10 +399,10 @@ export default function OwnerBookingsPage() {
     const s = searchTerm.toLowerCase();
     const matchSearch =
       (b.customer?.first_name?.toLowerCase() ?? '').includes(s) ||
-      (b.customer?.last_name?.toLowerCase() ?? '').includes(s) ||
-      (b.customer?.email?.toLowerCase() ?? '').includes(s) ||
-      (b.vehicle?.make?.toLowerCase() ?? '').includes(s) ||
-      (b.vehicle?.model?.toLowerCase() ?? '').includes(s);
+      (b.customer?.last_name?.toLowerCase()  ?? '').includes(s) ||
+      (b.customer?.email?.toLowerCase()      ?? '').includes(s) ||
+      (b.vehicle?.make?.toLowerCase()        ?? '').includes(s) ||
+      (b.vehicle?.model?.toLowerCase()       ?? '').includes(s);
     const matchTab = activeTab === 'All' || b.status === activeTab.toLowerCase();
     return matchSearch && matchTab;
   });
@@ -159,6 +423,10 @@ export default function OwnerBookingsPage() {
     return primary?.url ?? v.vehicle_images[0]?.url ?? null;
   };
 
+  // Bookings that can have disputes: ongoing or completed
+  const canDispute = (status: Booking['status']) =>
+    status === 'ongoing' || status === 'completed';
+
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
@@ -176,19 +444,33 @@ export default function OwnerBookingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Dispute Modal */}
+      {disputeBooking && ownerId && (
+        <DisputeModal
+          booking={disputeBooking}
+          submitterId={ownerId}
+          onClose={() => setDisputeBooking(null)}
+          onSuccess={() => setShowSuccessToast(true)}
+        />
+      )}
+
+      {/* Success Toast */}
+      {showSuccessToast && (
+        <SuccessToast onClose={() => setShowSuccessToast(false)} />
+      )}
+
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-700 to-blue-900 text-white px-6 py-10 shadow-lg">
         <div className="max-w-6xl mx-auto">
           <p className="text-blue-200 text-sm font-medium tracking-wide uppercase mb-2">Owner Dashboard</p>
           <h1 className="text-4xl md:text-5xl font-bold mb-6">Manage Your Bookings</h1>
 
-          {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Total Bookings', value: stats.total, icon: <Calendar size={18} /> },
-              { label: 'Pending',        value: stats.pending, icon: <Clock size={18} />, alert: stats.pending > 0 },
-              { label: 'Active Rentals', value: stats.ongoing, icon: <RefreshCw size={18} /> },
-              { label: 'Total Revenue',  value: `$${stats.revenue.toFixed(0)}`, icon: <DollarSign size={18} /> },
+              { label: 'Total Bookings', value: stats.total,                      icon: <Calendar size={18} /> },
+              { label: 'Pending',        value: stats.pending,                    icon: <Clock size={18} />, alert: stats.pending > 0 },
+              { label: 'Active Rentals', value: stats.ongoing,                    icon: <RefreshCw size={18} /> },
+              { label: 'Total Revenue',  value: `$${stats.revenue.toFixed(0)}`,   icon: <DollarSign size={18} /> },
             ].map((s) => (
               <div
                 key={s.label}
@@ -261,7 +543,7 @@ export default function OwnerBookingsPage() {
             const isExpanded = expanded === booking.id;
             const nextStatuses = NEXT_STATUSES[booking.status] ?? [];
             const customer = booking.customer;
-            const vehicle = booking.vehicle;
+            const vehicle  = booking.vehicle;
 
             return (
               <div
@@ -364,38 +646,49 @@ export default function OwnerBookingsPage() {
                     </div>
 
                     {/* Actions */}
-                    {nextStatuses.length > 0 ? (
-                      <div className="flex flex-wrap gap-3">
-                        {nextStatuses.map(ns => {
-                          const nsCfg = STATUS_CONFIG[ns];
-                          const isPositive = ns !== 'cancelled';
-                          return (
-                            <button
-                              key={ns}
-                              disabled={updatingId === booking.id}
-                              onClick={() => updateStatus(booking.id, ns)}
-                              className={`
-                                flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-60
-                                ${isPositive
-                                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                                  : 'bg-white text-red-600 border border-red-300 hover:bg-red-50'}
-                              `}
-                            >
-                              {updatingId === booking.id ? (
-                                <RefreshCw size={14} className="animate-spin" />
-                              ) : (
-                                nsCfg.icon
-                              )}
-                              {isPositive ? 'Confirm as' : 'Cancel – '} {nsCfg.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic bg-gray-100 rounded-lg p-4 text-center">
-                        Booking is {booking.status} — no further actions available.
-                      </p>
-                    )}
+                    <div className="flex flex-wrap gap-3">
+                      {nextStatuses.length > 0 && nextStatuses.map(ns => {
+                        const nsCfg = STATUS_CONFIG[ns];
+                        const isPositive = ns !== 'cancelled';
+                        return (
+                          <button
+                            key={ns}
+                            disabled={updatingId === booking.id}
+                            onClick={() => updateStatus(booking.id, ns)}
+                            className={`
+                              flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-60
+                              ${isPositive
+                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
+                                : 'bg-white text-red-600 border border-red-300 hover:bg-red-50'}
+                            `}
+                          >
+                            {updatingId === booking.id ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              nsCfg.icon
+                            )}
+                            {isPositive ? 'Confirm as' : 'Cancel – '} {nsCfg.label}
+                          </button>
+                        );
+                      })}
+
+                      {/* Dispute button — visible on ongoing/completed */}
+                      {canDispute(booking.status) && (
+                        <button
+                          onClick={() => setDisputeBooking(booking)}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all ml-auto"
+                        >
+                          <FileWarning size={15} />
+                          File a Dispute
+                        </button>
+                      )}
+
+                      {nextStatuses.length === 0 && !canDispute(booking.status) && (
+                        <p className="text-sm text-gray-500 italic bg-gray-100 rounded-lg p-4 text-center w-full">
+                          Booking is {booking.status} — no further actions available.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -403,6 +696,16 @@ export default function OwnerBookingsPage() {
           })
         )}
       </div>
+
+      <style jsx global>{`
+        @keyframes slide-up {
+          from { transform: translateY(20px); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease both;
+        }
+      `}</style>
     </div>
   );
 }
