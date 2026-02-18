@@ -60,6 +60,16 @@ function timeAgo(d: string) {
   return days < 30 ? `${days}d ago` : formatDate(d);
 }
 
+function normalizeVehicle(data: any): Vehicle {
+  const owner = Array.isArray(data?.owner) ? (data.owner[0] ?? null) : (data?.owner ?? null);
+  return {
+    ...data,
+    owner,
+    images: Array.isArray(data?.images) ? data.images : (data?.images ?? null),
+    features: Array.isArray(data?.features) ? data.features : (data?.features ?? null),
+  };
+}
+
 // ─── Reject Confirmation Modal ────────────────────────────────────────────────
 function RejectModal({
   vehicle,
@@ -391,7 +401,7 @@ export default function AdminVehicleApprovalPage() {
       if (err) {
         setError(err.message);
       } else {
-        setVehicles(data ?? []);
+        setVehicles((data ?? []).map(normalizeVehicle));
       }
       setLoading(false);
     };
