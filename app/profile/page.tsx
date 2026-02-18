@@ -24,6 +24,7 @@ import {
   MessageCircle,
   Upload,
   Loader2,
+  View,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -243,7 +244,7 @@ export default function ProfilePage() {
     'vehicle-owner': [
       { icon: User, label: 'My Profile', href: '/profile', active: true },
       { icon: Car, label: 'My Vehicles', href: '/owner-dashboard/vehicles' },
-      { icon: DollarSign, label: 'Earnings', href: '/owner-dashboard/earning' },
+      { icon: DollarSign, label: 'Owner Dashboard', href: '/owner-dashboard/earning' },
       { icon: Calendar, label: 'Bookings', href: '/owner-dashboard/bookings' },
       { icon: MessageCircle, label: 'Support', href: '/support' },
       { icon: Settings, label: 'Settings', href: '/profile/settings' },
@@ -256,6 +257,8 @@ export default function ProfilePage() {
       { icon: MessageCircle, label: 'Disputes', href: '/admin/disputes' },
       { icon: Shield, label: 'Identity Verification', href: '/admin/identity-verification' },
       { icon: CheckCircle, label: 'Bookings', href: '/admin/bookings' },
+      { icon: View, label: 'Reviews', href: '/admin/review' },
+
       { icon: LogOut, label: 'Logout', href: '#', onClick: handleLogout },
     ],
   };

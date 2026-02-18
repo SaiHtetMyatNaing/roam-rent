@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Car, Calendar, MapPin, CheckCircle2, XCircle, Clock,
   AlertCircle, ChevronDown, RefreshCw, Search, Star,
-  ArrowRight, X, Pencil, Loader2, CreditCard, Ban,
+  ArrowRight, X, Loader2, CreditCard, Ban,
   MessageCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -39,13 +39,6 @@ type Booking = {
   } | null;
 };
 
-type RescheduleForm = {
-  pickup_date: string;
-  dropoff_date: string;
-  pickup_location: string;
-  dropoff_location: string;
-};
-
 const STATUS_TABS = ['All', 'Pending', 'Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
 
 const STATUS_CONFIG: Record<BookingStatus, {
@@ -70,193 +63,6 @@ function getVehicleImg(v: Booking['vehicle']): string | null {
   if (!v?.vehicle_images?.length) return null;
   const primary = v.vehicle_images.find(i => i.is_primary);
   return primary?.url ?? v.vehicle_images[0]?.url ?? null;
-}
-
-// ─── Reschedule Modal ──────────────────────────────────────────────────────────
-function RescheduleModal({
-  booking,
-  onClose,
-  onSuccess,
-}: {
-  booking: Booking;
-  onClose: () => void;
-  onSuccess: (updated: Partial<Booking>) => void;
-}) {
-  const today = new Date().toISOString().split('T')[0];
-  const [form, setForm] = useState<RescheduleForm>({
-    pickup_date: booking.pickup_date.split('T')[0],
-    dropoff_date: booking.dropoff_date.split('T')[0],
-    pickup_location: booking.pickup_location,
-    dropoff_location: booking.dropoff_location,
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const set = <K extends keyof RescheduleForm>(k: K, v: string) => setForm(p => ({ ...p, [k]: v }));
-
-  const days = form.pickup_date && form.dropoff_date
-    ? daysBetween(form.pickup_date, form.dropoff_date) : 0;
-  const newTotal = days * (booking.vehicle?.price_per_day ?? 0);
-
-  const handleSave = async () => {
-    if (!form.pickup_date || !form.dropoff_date) return setError('Please select both dates.');
-    if (days <= 0) return setError('Drop-off must be after pick-up.');
-    if (!form.pickup_location.trim() || !form.dropoff_location.trim()) return setError('Please fill in all location fields.');
-
-    setLoading(true);
-    setError(null);
-
-    const { error: err } = await supabase
-      .from('bookings')
-      .update({
-        pickup_date: new Date(form.pickup_date).toISOString(),
-        dropoff_date: new Date(form.dropoff_date).toISOString(),
-        pickup_location: form.pickup_location,
-        dropoff_location: form.dropoff_location,
-        total_price: newTotal,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', booking.id);
-
-    setLoading(false);
-
-    if (err) {
-      setError(err.message);
-    } else {
-      onSuccess({
-        pickup_date: new Date(form.pickup_date).toISOString(),
-        dropoff_date: new Date(form.dropoff_date).toISOString(),
-        pickup_location: form.pickup_location,
-        dropoff_location: form.dropoff_location,
-        total_price: newTotal,
-      });
-    }
-  };
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <div>
-            <h2 className="font-bold text-gray-900 text-xl">Reschedule Booking</h2>
-            <p className="text-sm text-gray-600 mt-0.5">
-              {booking.vehicle?.make} {booking.vehicle?.model} · {booking.vehicle?.year}
-            </p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X size={20} className="text-gray-600" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="bg-blue-50/40 rounded-lg p-4 text-sm border border-blue-100">
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">Current Booking</p>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-gray-600 text-xs">Pick-up</p>
-                <p className="font-semibold text-gray-900">{formatDate(booking.pickup_date)}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 text-xs">Drop-off</p>
-                <p className="font-semibold text-gray-900">{formatDate(booking.dropoff_date)}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 text-xs">Total</p>
-                <p className="font-semibold text-gray-900">${booking.total_price.toFixed(2)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">New Dates</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1.5">Pick-up Date</label>
-                <input
-                  type="date"
-                  min={today}
-                  value={form.pickup_date}
-                  onChange={e => {
-                    set('pickup_date', e.target.value);
-                    if (form.dropoff_date && e.target.value >= form.dropoff_date) set('dropoff_date', '');
-                  }}
-                  className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200/40 outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1.5">Drop-off Date</label>
-                <input
-                  type="date"
-                  min={form.pickup_date || today}
-                  value={form.dropoff_date}
-                  onChange={e => set('dropoff_date', e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200/40 outline-none transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          {days > 0 && (
-            <div className="flex items-center justify-between bg-blue-50 rounded-lg px-5 py-4 border border-blue-100">
-              <span className="text-sm text-gray-700">{days} day{days !== 1 ? 's' : ''} × ${booking.vehicle?.price_per_day ?? 0}/day</span>
-              <span className="font-bold text-blue-800 text-lg">${newTotal.toFixed(2)}</span>
-            </div>
-          )}
-
-          <div>
-            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Locations</p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1.5">Pick-up Location</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Noi Bai Airport, Hanoi"
-                  value={form.pickup_location}
-                  onChange={e => set('pickup_location', e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200/40 outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1.5">Drop-off Location</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Hoan Kiem Lake area"
-                  value={form.dropoff_location}
-                  onChange={e => set('dropoff_location', e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200/40 outline-none transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <p className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
-              <AlertCircle size={16} /> {error}
-            </p>
-          )}
-
-          <div className="flex gap-4 pt-2">
-            <button onClick={onClose} className="flex-1 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={loading}
-              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-3 rounded-lg font-medium transition-colors shadow-sm"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-              {loading ? 'Saving…' : 'Save Changes'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ─── Cancel Modal ──────────────────────────────────────────────────────────────
@@ -337,7 +143,6 @@ export default function MyBookingsPage() {
   const [activeTab, setActiveTab] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [rescheduleTarget, setRescheduleTarget] = useState<Booking | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
 
   // ── NEW: review state ──────────────────────────────────────────────────────
@@ -424,7 +229,6 @@ export default function MyBookingsPage() {
     spent:    bookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_price, 0),
   };
 
-  const canReschedule = (status: BookingStatus) => status === 'pending' || status === 'upcoming';
   const canCancel     = (status: BookingStatus) => status === 'pending' || status === 'upcoming';
 
   if (loading) {
@@ -654,15 +458,6 @@ export default function MyBookingsPage() {
                     </p>
 
                     <div className="flex flex-wrap gap-3">
-                      {canReschedule(booking.status) && (
-                        <button
-                          onClick={() => setRescheduleTarget(booking)}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
-                        >
-                          <Pencil size={14} /> Reschedule
-                        </button>
-                      )}
-
                       {canCancel(booking.status) && (
                         <button
                           onClick={() => setCancelTarget(booking)}
@@ -721,19 +516,6 @@ export default function MyBookingsPage() {
       </div>
 
       {/* ── Modals ── */}
-      {rescheduleTarget && (
-        <RescheduleModal
-          booking={rescheduleTarget}
-          onClose={() => setRescheduleTarget(null)}
-          onSuccess={updated => {
-            setBookings(prev =>
-              prev.map(b => (b.id === rescheduleTarget.id ? { ...b, ...updated } : b))
-            );
-            setRescheduleTarget(null);
-          }}
-        />
-      )}
-
       {cancelTarget && (
         <CancelModal
           booking={cancelTarget}
