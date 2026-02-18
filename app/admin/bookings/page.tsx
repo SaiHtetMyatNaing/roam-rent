@@ -64,6 +64,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   cancelled: { label: 'Cancelled', color: 'text-blue-800',   bg: 'bg-blue-100 border-blue-200',  icon: <XCircle size={13} /> },
 };
 
+const FALLBACK_STATUS = { label: 'Unknown', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: <AlertCircle size={13} /> };
+
 const NEXT_STATUSES: Partial<Record<Booking['status'], Booking['status'][]>> = {
   pending:  ['upcoming', 'cancelled'],
   upcoming: ['ongoing',  'cancelled'],
@@ -331,7 +333,7 @@ export default function BookingsPage() {
           </div>
         ) : (
           filtered.map(booking => {
-            const cfg         = STATUS_CONFIG[booking.status];
+            const cfg         = STATUS_CONFIG[booking.status] ?? FALLBACK_STATUS;
             const imgUrl      = getVehicleImg(booking.vehicle);
             const isExpanded  = expanded === booking.id;
             const nextStatuses = NEXT_STATUSES[booking.status] ?? [];
