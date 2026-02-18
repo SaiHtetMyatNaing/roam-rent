@@ -5,7 +5,7 @@ import {
   ChevronDown, Gauge, Briefcase, Loader2, AlertCircle, Car,
   Wind, X, Star, ChevronLeft, ChevronRight, Sparkles,
   SlidersHorizontal, RotateCcw, ArrowRight, CreditCard,
-  CheckCircle2,
+  CheckCircle2, Lock, Info,
 } from "lucide-react";
 import { PostgrestError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -16,7 +16,7 @@ type FuelType = "Petrol" | "Diesel" | "Electric" | "Hybrid";
 type Drivetrain = "FWD" | "RWD" | "AWD" | "4WD";
 type VehicleStatus = "available" | "rented" | "maintenance" | "pending_approval";
 type SortOption = "recommended" | "price_asc" | "price_desc";
-type Step = "details" | "booking" | "confirm" | "success";
+type Step = "details" | "booking" | "payment" | "confirm" | "success";
 
 interface VehicleImage {
   url: string;
@@ -54,6 +54,25 @@ interface BookingData {
   dropoff_date: string;
   pickup_location: string;
   dropoff_location: string;
+}
+
+interface PaymentData {
+  card_name: string;
+  card_number: string;
+  expiry: string;
+  cvv: string;
+}
+
+interface AvailabilityWindow {
+  available_from: string;
+  available_to: string;
+  note: string | null;
+}
+
+interface TakenPeriod {
+  from_date: string;
+  to_date: string;
+  reason: string;
 }
 
 // ─── Filter State ─────────────────────────────────────────────────────────────
@@ -148,11 +167,46 @@ function daysBetween(a: string, b: string) {
   return Math.max(0, Math.ceil(ms / 86_400_000));
 }
 
+/** Returns true if [start,end] overlaps any taken period */
+function overlapsAnyPeriod(start: string, end: string, taken: TakenPeriod[]): boolean {
+  const s = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  return taken.some(({ from_date, to_date }) => {
+    const f = new Date(from_date).getTime();
+    const t = new Date(to_date).getTime();
+    return s <= t && e >= f;
+  });
+}
+
+/** Returns true if date falls within at least one availability window */
+function isWithinAvailability(date: string, windows: AvailabilityWindow[]): boolean {
+  if (windows.length === 0) return true; // no windows = always available
+  const d = new Date(date).getTime();
+  return windows.some(w => {
+    const from = new Date(w.available_from).getTime();
+    const to = new Date(w.available_to).getTime();
+    return d >= from && d <= to;
+  });
+}
+
+/** Format card number with spaces every 4 digits */
+function formatCardNumber(value: string): string {
+  return value.replace(/\D/g, "").replace(/(.{4})/g, "$1 ").trim().slice(0, 19);
+}
+
+/** Format expiry as MM/YY */
+function formatExpiry(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return digits;
+}
+
 // ─── StepBar ──────────────────────────────────────────────────────────────────
 function StepBar({ step }: { step: Step }) {
   const steps: { id: Step; label: string }[] = [
     { id: "details", label: "Details" },
     { id: "booking", label: "Dates" },
+    { id: "payment", label: "Payment" },
     { id: "confirm", label: "Confirm" },
     { id: "success", label: "Done" },
   ];
@@ -171,7 +225,7 @@ function StepBar({ step }: { step: Step }) {
             </span>
           </div>
           {i < steps.length - 1 && (
-            <div className={`w-10 h-0.5 mb-3 mx-1 ${i < idx ? "bg-blue-600" : "bg-gray-200"}`} />
+            <div className={`w-8 h-0.5 mb-3 mx-1 ${i < idx ? "bg-blue-600" : "bg-gray-200"}`} />
           )}
         </div>
       ))}
@@ -462,7 +516,7 @@ function VehicleCard({ car, isWishlisted, onToggleWishlist, onViewDetails }: Veh
   );
 }
 
-// ─── Shared: mini car thumbnail used in booking steps ─────────────────────────
+// ─── Mini car thumbnail ───────────────────────────────────────────────────────
 function CarThumb({ car }: { car: Vehicle }) {
   const imgs = car.vehicle_images ?? [];
   const u = imgs.find((i) => i.is_primary)?.publicUrl ?? imgs[0]?.publicUrl ?? imgs[0]?.url;
@@ -483,11 +537,12 @@ function CarThumb({ car }: { car: Vehicle }) {
 }
 
 // ─── Step 1: Details ──────────────────────────────────────────────────────────
-function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose, isAuthenticated }: {
+function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose, isAuthenticated, availabilityWindows }: {
   car: Vehicle; isWishlisted: boolean;
   onToggleWishlist: (id: string) => void;
   onNext: () => void; onClose: () => void;
   isAuthenticated: boolean;
+  availabilityWindows: AvailabilityWindow[];
 }) {
   const images = car.vehicle_images ?? [];
   const allImgUrls = images.map((i) => i.publicUrl ?? i.url ?? placeholderImage(car.type));
@@ -585,6 +640,27 @@ function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose, isA
           </div>
         )}
 
+        {/* ── Availability windows ── */}
+        {availabilityWindows.length > 0 && (
+          <div className="mb-7">
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+              <Calendar size={14} /> Owner Availability
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {availabilityWindows.map((w, i) => (
+                <div key={i} className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-800 text-xs font-semibold px-3 py-2 rounded-lg">
+                  <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                  <span>{formatDate(w.available_from)} – {formatDate(w.available_to)}</span>
+                  {w.note && <span className="text-green-600 font-normal">· {w.note}</span>}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+              <Info size={11} /> Bookings can only be made within these dates.
+            </p>
+          </div>
+        )}
+
         {features.length > 0 && (
           <div className="mb-8">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Features</h3>
@@ -615,15 +691,7 @@ function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose, isA
             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white
               px-10 py-4 rounded-md font-bold text-sm tracking-wide transition-colors active:scale-95 shadow-lg shadow-blue-500/20"
           >
-            {isAuthenticated ? (
-              <>
-                Book Now <ArrowRight size={16} />
-              </>
-            ) : (
-              <>
-                Sign In to Book <ArrowRight size={16} />
-              </>
-            )}
+            {isAuthenticated ? (<>Book Now <ArrowRight size={16} /></>) : (<>Sign In to Book <ArrowRight size={16} /></>)}
           </button>
         </div>
       </div>
@@ -632,8 +700,12 @@ function DetailsStep({ car, isWishlisted, onToggleWishlist, onNext, onClose, isA
 }
 
 // ─── Step 2: Dates & Locations ────────────────────────────────────────────────
-function BookingStep({ car, onBack, onNext }: {
-  car: Vehicle; onBack: () => void; onNext: (data: BookingData) => void;
+function BookingStep({ car, availabilityWindows, takenPeriods, onBack, onNext }: {
+  car: Vehicle;
+  availabilityWindows: AvailabilityWindow[];
+  takenPeriods: TakenPeriod[];
+  onBack: () => void;
+  onNext: (data: BookingData) => void;
 }) {
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState<BookingData>({ pickup_date: "", dropoff_date: "", pickup_location: "", dropoff_location: "" });
@@ -643,12 +715,33 @@ function BookingStep({ car, onBack, onNext }: {
   const days = form.pickup_date && form.dropoff_date ? daysBetween(form.pickup_date, form.dropoff_date) : 0;
   const total = days * car.price_per_day;
 
+  // Compute min/max dates from availability windows
+  const minDate = availabilityWindows.length > 0
+    ? availabilityWindows.reduce((min, w) => w.available_from < min ? w.available_from : min, availabilityWindows[0].available_from)
+    : today;
+  const maxDate = availabilityWindows.length > 0
+    ? availabilityWindows.reduce((max, w) => w.available_to > max ? w.available_to : max, availabilityWindows[0].available_to)
+    : undefined;
+
   const handleNext = () => {
     if (!form.pickup_date) return setFieldError("Please select a pick-up date.");
     if (!form.dropoff_date) return setFieldError("Please select a drop-off date.");
     if (days <= 0) return setFieldError("Drop-off must be after pick-up.");
     if (!form.pickup_location.trim()) return setFieldError("Please enter a pick-up location.");
     if (!form.dropoff_location.trim()) return setFieldError("Please enter a drop-off location.");
+
+    // Check availability windows
+    if (availabilityWindows.length > 0) {
+      if (!isWithinAvailability(form.pickup_date, availabilityWindows) || !isWithinAvailability(form.dropoff_date, availabilityWindows)) {
+        return setFieldError("Selected dates fall outside the owner's available periods.");
+      }
+    }
+
+    // Check against taken periods
+    if (overlapsAnyPeriod(form.pickup_date, form.dropoff_date, takenPeriods)) {
+      return setFieldError("Those dates overlap with an existing booking or blocked period. Please choose different dates.");
+    }
+
     setFieldError(null);
     onNext(form);
   };
@@ -656,13 +749,51 @@ function BookingStep({ car, onBack, onNext }: {
   return (
     <div className="p-5 sm:p-6">
       <CarThumb car={car} />
+
+      {/* Availability hint */}
+      {availabilityWindows.length > 0 && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl">
+          <p className="text-xs font-bold text-green-700 mb-1.5 flex items-center gap-1.5">
+            <Calendar size={12} /> Available periods
+          </p>
+          <div className="flex flex-col gap-1">
+            {availabilityWindows.map((w, i) => (
+              <p key={i} className="text-xs text-green-700">
+                {formatDate(w.available_from)} → {formatDate(w.available_to)}
+                {w.note && <span className="text-green-600"> · {w.note}</span>}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Blocked dates hint */}
+      {takenPeriods.length > 0 && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+          <p className="text-xs font-bold text-red-700 mb-1.5 flex items-center gap-1.5">
+            <X size={12} /> Unavailable periods
+          </p>
+          <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+            {takenPeriods.map((t, i) => (
+              <p key={i} className="text-xs text-red-600">
+                {formatDate(t.from_date)} → {formatDate(t.to_date)}
+                <span className="text-red-400 ml-1 capitalize">· {t.reason}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pick-up Date</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={14} />
-              <input type="date" min={today} value={form.pickup_date}
+              <input type="date"
+                min={minDate}
+                max={maxDate}
+                value={form.pickup_date}
                 onChange={(e) => { set("pickup_date", e.target.value); if (form.dropoff_date && e.target.value >= form.dropoff_date) set("dropoff_date", ""); }}
                 className="w-full pl-9 pr-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl
                   focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
@@ -672,7 +803,10 @@ function BookingStep({ car, onBack, onNext }: {
             <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Drop-off Date</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={14} />
-              <input type="date" min={form.pickup_date || today} value={form.dropoff_date}
+              <input type="date"
+                min={form.pickup_date || minDate}
+                max={maxDate}
+                value={form.dropoff_date}
                 onChange={(e) => set("dropoff_date", e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl
                   focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
@@ -722,6 +856,154 @@ function BookingStep({ car, onBack, onNext }: {
         </button>
         <button onClick={handleNext}
           className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-95 shadow-lg shadow-blue-500/20">
+          Add Payment <ArrowRight size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 3: Payment ──────────────────────────────────────────────────────────
+function PaymentStep({ car, booking, onBack, onNext }: {
+  car: Vehicle; booking: BookingData; onBack: () => void; onNext: (data: PaymentData) => void;
+}) {
+  const days = daysBetween(booking.pickup_date, booking.dropoff_date);
+  const subtotal = days * car.price_per_day;
+  const serviceFee = parseFloat((subtotal * 0.1).toFixed(2));
+  const total = subtotal + serviceFee;
+
+  const [payment, setPayment] = useState<PaymentData>({ card_name: "", card_number: "", expiry: "", cvv: "" });
+  const [fieldError, setFieldError] = useState<string | null>(null);
+
+  const setP = <K extends keyof PaymentData>(k: K, v: string) => setPayment(p => ({ ...p, [k]: v }));
+
+  const handleNext = () => {
+    if (!payment.card_name.trim()) return setFieldError("Please enter the cardholder name.");
+    const digits = payment.card_number.replace(/\s/g, "");
+    if (digits.length < 16) return setFieldError("Please enter a valid 16-digit card number.");
+    if (payment.expiry.length < 5) return setFieldError("Please enter a valid expiry date (MM/YY).");
+    if (payment.cvv.length < 3) return setFieldError("Please enter a valid CVV.");
+    setFieldError(null);
+    onNext(payment);
+  };
+
+  // Card brand detection
+  const cardDigits = payment.card_number.replace(/\s/g, "");
+  const cardBrand = cardDigits.startsWith("4") ? "Visa"
+    : cardDigits.startsWith("5") ? "Mastercard"
+    : cardDigits.startsWith("3") ? "Amex"
+    : null;
+
+  return (
+    <div className="p-5 sm:p-6">
+      <CarThumb car={car} />
+
+      {/* Charge notice */}
+      <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-5">
+        <Lock size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-amber-700 font-medium leading-relaxed">
+          Your card will <strong>not</strong> be charged now. Payment of <strong>${total.toFixed(2)}</strong> is only collected after the owner approves your booking.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {/* Card number */}
+        <div>
+          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Card Number</label>
+          <div className="relative">
+            <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={15} />
+            <input
+              type="text" inputMode="numeric" placeholder="1234 5678 9012 3456"
+              value={payment.card_number}
+              onChange={(e) => setP("card_number", formatCardNumber(e.target.value))}
+              maxLength={19}
+              className="w-full pl-9 pr-20 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl
+                focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 tracking-widest"
+            />
+            {cardBrand && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded">
+                {cardBrand}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Name on card */}
+        <div>
+          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Name on Card</label>
+          <input
+            type="text" placeholder="John Smith"
+            value={payment.card_name}
+            onChange={(e) => setP("card_name", e.target.value)}
+            className="w-full px-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl
+              focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Expiry */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Expiry</label>
+            <input
+              type="text" inputMode="numeric" placeholder="MM/YY"
+              value={payment.expiry}
+              onChange={(e) => setP("expiry", formatExpiry(e.target.value))}
+              maxLength={5}
+              className="w-full px-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl
+                focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 tracking-widest"
+            />
+          </div>
+          {/* CVV */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">CVV</label>
+            <div className="relative">
+              <input
+                type="password" inputMode="numeric" placeholder="•••"
+                value={payment.cvv}
+                onChange={(e) => setP("cvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                maxLength={4}
+                className="w-full px-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl
+                  focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              />
+              <Lock size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300" />
+            </div>
+          </div>
+        </div>
+
+        {fieldError && (
+          <p className="flex items-center gap-1.5 text-sm text-red-600 font-medium">
+            <AlertCircle size={14} /> {fieldError}
+          </p>
+        )}
+
+        {/* Price summary */}
+        <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-1.5">
+          <div className="flex justify-between text-gray-600">
+            <span>${car.price_per_day} × {days} day{days !== 1 ? "s" : ""}</span>
+            <span className="font-semibold text-slate-800">${subtotal.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-gray-600">
+            <span>Service fee (10%)</span>
+            <span className="font-semibold text-slate-800">${serviceFee.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between font-extrabold text-slate-900 border-t border-gray-200 pt-2 mt-1">
+            <span>Total due on approval</span>
+            <span>${total.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <Lock size={11} /> <span>256-bit SSL encryption · PCI DSS compliant</span>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button onClick={onBack}
+          className="flex items-center gap-1.5 px-4 py-3 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl hover:bg-gray-50 transition-colors">
+          <ChevronLeft size={15} /> Back
+        </button>
+        <button onClick={handleNext}
+          className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-95 shadow-lg shadow-blue-500/20">
           Review Booking <ArrowRight size={15} />
         </button>
       </div>
@@ -729,15 +1011,18 @@ function BookingStep({ car, onBack, onNext }: {
   );
 }
 
-// ─── Step 3: Confirm ──────────────────────────────────────────────────────────
-function ConfirmStep({ car, booking, onBack, onConfirm, submitting, submitError }: {
-  car: Vehicle; booking: BookingData; onBack: () => void; onConfirm: () => void;
+// ─── Step 4: Confirm ──────────────────────────────────────────────────────────
+function ConfirmStep({ car, booking, payment, onBack, onConfirm, submitting, submitError }: {
+  car: Vehicle; booking: BookingData; payment: PaymentData;
+  onBack: () => void; onConfirm: () => void;
   submitting: boolean; submitError: string | null;
 }) {
   const days = daysBetween(booking.pickup_date, booking.dropoff_date);
   const subtotal = days * car.price_per_day;
   const serviceFee = parseFloat((subtotal * 0.1).toFixed(2));
   const total = subtotal + serviceFee;
+
+  const maskedCard = `•••• •••• •••• ${payment.card_number.replace(/\s/g, "").slice(-4)}`;
 
   const Row = ({ label, value, bold }: { label: string; value: string; bold?: boolean }) => (
     <div className={`flex justify-between items-center py-2 ${bold ? "border-t border-gray-200 pt-3 mt-1" : ""}`}>
@@ -766,6 +1051,16 @@ function ConfirmStep({ car, booking, onBack, onConfirm, submitting, submitError 
         </div>
       </div>
 
+      {/* Payment method summary */}
+      <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 mb-4">
+        <CreditCard size={18} className="text-blue-500 flex-shrink-0" />
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Payment Method</p>
+          <p className="text-sm font-semibold text-slate-900">{maskedCard}</p>
+          <p className="text-xs text-gray-400">{payment.card_name}</p>
+        </div>
+      </div>
+
       <div className="bg-gray-50 rounded-xl p-4 mb-4">
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Price Breakdown</p>
         <Row label={`$${car.price_per_day} × ${days} day${days !== 1 ? "s" : ""}`} value={`$${subtotal.toFixed(2)}`} />
@@ -774,9 +1069,9 @@ function ConfirmStep({ car, booking, onBack, onConfirm, submitting, submitError 
       </div>
 
       <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
-        <CreditCard size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        <Lock size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-amber-700 font-medium leading-relaxed">
-          Payment is collected securely after the owner confirms your booking. No charge until approved.
+          Your card will not be charged until the owner approves. You can cancel for free before approval.
         </p>
       </div>
 
@@ -802,7 +1097,7 @@ function ConfirmStep({ car, booking, onBack, onConfirm, submitting, submitError 
   );
 }
 
-// ─── Step 4: Success ──────────────────────────────────────────────────────────
+// ─── Step 5: Success ──────────────────────────────────────────────────────────
 function SuccessStep({ car, booking, onClose }: { car: Vehicle; booking: BookingData; onClose: () => void }) {
   const days = daysBetween(booking.pickup_date, booking.dropoff_date);
   const total = (days * car.price_per_day * 1.1).toFixed(2);
@@ -830,7 +1125,7 @@ function SuccessStep({ car, booking, onClose }: { car: Vehicle; booking: Booking
             </div>
           ))}
           <div className="flex justify-between text-sm border-t border-gray-200 pt-2 mt-2">
-            <span className="font-bold text-slate-900">Total</span>
+            <span className="font-bold text-slate-900">Total (on approval)</span>
             <span className="font-extrabold text-slate-900">${total}</span>
           </div>
         </div>
@@ -862,8 +1157,14 @@ function DetailDialog({ car, isWishlisted, onToggleWishlist, onClose, isAuthenti
   const supabase = createClient();
   const [step, setStep] = useState<Step>("details");
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Availability & blocked dates
+  const [availabilityWindows, setAvailabilityWindows] = useState<AvailabilityWindow[]>([]);
+  const [takenPeriods, setTakenPeriods] = useState<TakenPeriod[]>([]);
+  const [loadingAvailability, setLoadingAvailability] = useState(true);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -875,6 +1176,21 @@ function DetailDialog({ car, isWishlisted, onToggleWishlist, onClose, isAuthenti
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
+
+  // Load availability windows + taken periods
+  useEffect(() => {
+    async function load() {
+      setLoadingAvailability(true);
+      const [{ data: windows }, { data: taken }] = await Promise.all([
+        supabase.from("vehicle_availability").select("available_from, available_to, note").eq("vehicle_id", car.id).order("available_from"),
+        supabase.from("vehicle_taken_periods").select("from_date, to_date, reason").eq("vehicle_id", car.id),
+      ]);
+      setAvailabilityWindows(windows ?? []);
+      setTakenPeriods(taken ?? []);
+      setLoadingAvailability(false);
+    }
+    load();
+  }, [car.id, supabase]);
 
   const handleConfirm = useCallback(async () => {
     if (!bookingData) return;
@@ -924,15 +1240,25 @@ function DetailDialog({ car, isWishlisted, onToggleWishlist, onClose, isAuthenti
         {step !== "details" && step !== "success" && <StepBar step={step} />}
 
         {step === "details" && (
-          <DetailsStep car={car} isWishlisted={isWishlisted} onToggleWishlist={onToggleWishlist}
-            onNext={() => setStep("booking")} onClose={onClose} isAuthenticated={isAuthenticated} />
+          loadingAvailability
+            ? <div className="flex items-center justify-center py-24"><Loader2 className="text-blue-400 animate-spin" size={32} /></div>
+            : <DetailsStep car={car} isWishlisted={isWishlisted} onToggleWishlist={onToggleWishlist}
+                onNext={() => setStep("booking")} onClose={onClose} isAuthenticated={isAuthenticated}
+                availabilityWindows={availabilityWindows} />
         )}
         {step === "booking" && (
-          <BookingStep car={car} onBack={() => setStep("details")}
-            onNext={(data) => { setBookingData(data); setStep("confirm"); }} />
+          <BookingStep car={car} availabilityWindows={availabilityWindows} takenPeriods={takenPeriods}
+            onBack={() => setStep("details")}
+            onNext={(data) => { setBookingData(data); setStep("payment"); }} />
         )}
-        {step === "confirm" && bookingData && (
-          <ConfirmStep car={car} booking={bookingData} onBack={() => setStep("booking")}
+        {step === "payment" && bookingData && (
+          <PaymentStep car={car} booking={bookingData}
+            onBack={() => setStep("booking")}
+            onNext={(data) => { setPaymentData(data); setStep("confirm"); }} />
+        )}
+        {step === "confirm" && bookingData && paymentData && (
+          <ConfirmStep car={car} booking={bookingData} payment={paymentData}
+            onBack={() => setStep("payment")}
             onConfirm={handleConfirm} submitting={submitting} submitError={submitError} />
         )}
         {step === "success" && bookingData && (
@@ -958,15 +1284,12 @@ export default function App(): JSX.Element {
 
   const supabase = createClient();
 
-  // Check authentication status
   useEffect(() => {
     const checkAuth = () => {
       const userEmail = localStorage.getItem('user_email');
       setIsAuthenticated(!!userEmail);
     };
-    
     checkAuth();
-    // Listen for storage changes (in case user signs in/out from other tabs)
     window.addEventListener('storage', checkAuth);
     return () => window.removeEventListener('storage', checkAuth);
   }, []);
@@ -1048,7 +1371,6 @@ export default function App(): JSX.Element {
       }}
     >
       <div className="max-w-7xl mx-auto px-4 pt-14">
-        {/* Filter button + Sort */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <button onClick={openFilters}
             className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold
