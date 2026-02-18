@@ -195,10 +195,15 @@ function formatCardNumber(value: string): string {
 }
 
 /** Format expiry as MM/YY */
-function formatExpiry(value: string): string {
+function formatExpiry(value: string, prev: string): string {
+  // If user is deleting and we had a slash, strip the slash + last digit
+  if (prev.length > value.length && prev.endsWith("/")) {
+    return value.slice(0, -1);
+  }
   const digits = value.replace(/\D/g, "").slice(0, 4);
-  if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return digits;
+  if (digits.length === 0) return "";
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
 }
 
 // ─── StepBar ──────────────────────────────────────────────────────────────────
@@ -947,7 +952,7 @@ function PaymentStep({ car, booking, onBack, onNext }: {
             <input
               type="text" inputMode="numeric" placeholder="MM/YY"
               value={payment.expiry}
-              onChange={(e) => setP("expiry", formatExpiry(e.target.value))}
+              onChange={(e) => setP("expiry", formatExpiry(e.target.value, payment.expiry))}
               maxLength={5}
               className="w-full px-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl
                 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 tracking-widest"
