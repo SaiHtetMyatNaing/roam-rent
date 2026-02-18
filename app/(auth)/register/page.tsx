@@ -31,7 +31,7 @@ interface FormData {
   phone: string;
   password: string;
   confirmPassword: string;
-  role: 'customer' | 'car-owner';
+  role: 'customer' | 'vehicle-owner';
   bio: string;
   addressStreet: string;
   addressCity: string;
@@ -427,7 +427,7 @@ export default function RegisterPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
                       { id: 'customer', label: 'Customer', sub: 'Rent vehicles' },
-                      { id: 'car-owner', label: 'Car Owner', sub: 'List & earn' },
+                      { id: 'vehicle-owner', label: 'Vehicle Owner', sub: 'List & earn' },
                     ].map((r) => (
                       <button
                         key={r.id}

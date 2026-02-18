@@ -5,8 +5,10 @@ import {
   Car, Calendar, MapPin, CheckCircle2, XCircle, Clock,
   AlertCircle, ChevronDown, RefreshCw, Search, Star,
   ArrowRight, X, Pencil, Loader2, CreditCard, Ban,
+  MessageCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { ReviewModal } from '@/components/review-modal';
 
 const supabase = createClient();
 
@@ -30,6 +32,7 @@ type Booking = {
     type: string;
     color: string | null;
     price_per_day: number;
+    owner_id: string;
     location_city: string | null;
     location_state: string | null;
     vehicle_images: { url: string; is_primary: boolean }[];
@@ -48,11 +51,11 @@ const STATUS_TABS = ['All', 'Pending', 'Upcoming', 'Ongoing', 'Completed', 'Canc
 const STATUS_CONFIG: Record<BookingStatus, {
   label: string; textColor: string; bgColor: string; borderColor: string; icon: React.ReactNode;
 }> = {
-  pending:   { label: 'Pending',   textColor: 'text-amber-700',     bgColor: 'bg-amber-50',     borderColor: 'border-amber-200',   icon: <Clock size={12} /> },
-  upcoming:  { label: 'Upcoming',  textColor: 'text-blue-700',      bgColor: 'bg-blue-50',      borderColor: 'border-blue-200',    icon: <Calendar size={12} /> },
-  ongoing:   { label: 'Ongoing',   textColor: 'text-emerald-700',   bgColor: 'bg-emerald-50',   borderColor: 'border-emerald-200', icon: <RefreshCw size={12} /> },
-  completed: { label: 'Completed', textColor: 'text-slate-700',     bgColor: 'bg-slate-100',    borderColor: 'border-slate-200',   icon: <CheckCircle2 size={12} /> },
-  cancelled: { label: 'Cancelled', textColor: 'text-red-700',       bgColor: 'bg-red-50',       borderColor: 'border-red-200',     icon: <XCircle size={12} /> },
+  pending:   { label: 'Pending',   textColor: 'text-amber-700',   bgColor: 'bg-amber-50',   borderColor: 'border-amber-200',   icon: <Clock size={12} /> },
+  upcoming:  { label: 'Upcoming',  textColor: 'text-blue-700',    bgColor: 'bg-blue-50',    borderColor: 'border-blue-200',    icon: <Calendar size={12} /> },
+  ongoing:   { label: 'Ongoing',   textColor: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200', icon: <RefreshCw size={12} /> },
+  completed: { label: 'Completed', textColor: 'text-slate-700',   bgColor: 'bg-slate-100',  borderColor: 'border-slate-200',   icon: <CheckCircle2 size={12} /> },
+  cancelled: { label: 'Cancelled', textColor: 'text-red-700',     bgColor: 'bg-red-50',     borderColor: 'border-red-200',     icon: <XCircle size={12} /> },
 };
 
 function formatDate(d: string) {
@@ -69,7 +72,7 @@ function getVehicleImg(v: Booking['vehicle']): string | null {
   return primary?.url ?? v.vehicle_images[0]?.url ?? null;
 }
 
-// ─── Reschedule Modal ─────────────────────────────────────────────────────────
+// ─── Reschedule Modal ──────────────────────────────────────────────────────────
 function RescheduleModal({
   booking,
   onClose,
@@ -256,7 +259,7 @@ function RescheduleModal({
   );
 }
 
-// ─── Cancel Modal ─────────────────────────────────────────────────────────────
+// ─── Cancel Modal ──────────────────────────────────────────────────────────────
 function CancelModal({
   booking,
   onClose,
@@ -328,6 +331,7 @@ function CancelModal({
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function MyBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [customerId, setCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('All');
@@ -335,6 +339,10 @@ export default function MyBookingsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<Booking | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+
+  // ── NEW: review state ──────────────────────────────────────────────────────
+  const [reviewTarget, setReviewTarget] = useState<Booking | null>(null);
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchBookings = async () => {
@@ -356,13 +364,16 @@ export default function MyBookingsPage() {
         return;
       }
 
+      setCustomerId(user.id);
+
+      // Fetch bookings — note: owner_id added to vehicle select
       const { data, error: err } = await supabase
         .from('bookings')
         .select(`
           id, pickup_date, dropoff_date, pickup_location, dropoff_location,
           total_price, status, created_at, updated_at,
           vehicle:vehicle_id (
-            id, make, model, year, type, color, price_per_day,
+            id, make, model, year, type, color, price_per_day, owner_id,
             location_city, location_state,
             vehicle_images (url, is_primary)
           )
@@ -373,8 +384,6 @@ export default function MyBookingsPage() {
       if (err) {
         setError(err.message);
       } else {
-        // ✅ Fix: Supabase returns vehicle as an array due to the join.
-        // We normalize it to a single object (or null) to match our Booking type.
         const normalized: Booking[] = (data ?? []).map((row: any) => ({
           ...row,
           vehicle: Array.isArray(row.vehicle)
@@ -382,6 +391,14 @@ export default function MyBookingsPage() {
             : (row.vehicle ?? null),
         }));
         setBookings(normalized);
+
+        // Fetch which bookings this customer has already reviewed
+        const { data: existingReviews } = await supabase
+          .from('reviews')
+          .select('booking_id')
+          .eq('reviewer_id', user.id);
+
+        setReviewedIds(new Set((existingReviews ?? []).map((r: any) => r.booking_id)));
       }
 
       setLoading(false);
@@ -439,7 +456,16 @@ export default function MyBookingsPage() {
       <div className="bg-gradient-to-r from-blue-700 to-blue-900 text-white px-6 py-10 shadow-lg">
         <div className="max-w-5xl mx-auto">
           <p className="text-blue-200 text-sm font-medium uppercase tracking-wide mb-2">My Account</p>
-          <h1 className="text-4xl md:text-5xl font-bold mb-8">My Bookings</h1>
+          <div className="flex items-start justify-between gap-4 mb-8">
+            <h1 className="text-4xl md:text-5xl font-bold">My Bookings</h1>
+            {/* ── NEW: Support link ── */}
+            <a
+              href="/support"
+              className="flex-shrink-0 flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all mt-1"
+            >
+              <MessageCircle size={15} /> Customer Support
+            </a>
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
@@ -516,6 +542,7 @@ export default function MyBookingsPage() {
             const imgUrl = getVehicleImg(booking.vehicle);
             const isExpanded = expanded === booking.id;
             const days = daysBetween(booking.pickup_date, booking.dropoff_date);
+            const alreadyReviewed = reviewedIds.has(booking.id);
 
             return (
               <div
@@ -645,18 +672,43 @@ export default function MyBookingsPage() {
                         </button>
                       )}
 
+                      {/* ── NEW: Completed booking actions ── */}
                       {booking.status === 'completed' && (
+                        <>
+                          {alreadyReviewed ? (
+                            <span className="flex items-center gap-2 px-5 py-2.5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg font-medium">
+                              <CheckCircle2 size={14} /> Review Submitted
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setReviewTarget(booking)}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+                            >
+                              <Star size={14} /> Leave a Review
+                            </button>
+                          )}
+                          <a
+                            href="/vehicles"
+                            className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            <Car size={14} /> Book Again
+                          </a>
+                        </>
+                      )}
+
+                      {/* ── NEW: Support ticket shortcut (non-cancelled bookings) ── */}
+                      {booking.status !== 'cancelled' && (
                         <a
-                          href="/vehicles"
-                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium transition-colors"
+                          href="/support"
+                          className="flex items-center gap-2 px-5 py-2.5 bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 rounded-lg text-sm font-medium transition-colors"
                         >
-                          <Star size={14} /> Book Again
+                          <MessageCircle size={14} /> Get Support
                         </a>
                       )}
 
-                      {(booking.status === 'cancelled' || booking.status === 'completed') && (
+                      {booking.status === 'cancelled' && (
                         <p className="text-sm text-gray-500 italic self-center">
-                          {booking.status === 'cancelled' ? 'This booking was cancelled.' : 'This rental has been completed.'}
+                          This booking was cancelled.
                         </p>
                       )}
                     </div>
@@ -668,6 +720,7 @@ export default function MyBookingsPage() {
         )}
       </div>
 
+      {/* ── Modals ── */}
       {rescheduleTarget && (
         <RescheduleModal
           booking={rescheduleTarget}
@@ -690,6 +743,19 @@ export default function MyBookingsPage() {
               prev.map(b => (b.id === cancelTarget.id ? { ...b, status: 'cancelled' } : b))
             );
             setCancelTarget(null);
+          }}
+        />
+      )}
+
+      {/* ── NEW: Review Modal ── */}
+      {reviewTarget && customerId && (
+        <ReviewModal
+          booking={reviewTarget}
+          customerId={customerId}
+          onClose={() => setReviewTarget(null)}
+          onSuccess={() => {
+            setReviewedIds(prev => new Set([...prev, reviewTarget.id]));
+            setReviewTarget(null);
           }}
         />
       )}
