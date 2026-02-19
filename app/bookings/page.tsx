@@ -714,48 +714,93 @@ export default function CustomerBookingsPage() {
                     </p>
 
                     {/* Action Buttons */}
-                    <div className="flex flex-wrap gap-3">
-                      {canCancel(booking.status) && (
-                        <button
-                          onClick={() => setCancelTarget(booking)}
-                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all"
-                        >
-                          <Ban size={14} />
-                          Cancel Booking
-                        </button>
-                      )}
-
-                      {booking.status === 'completed' && (
-                        <>
-                          <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm">
-                            <Star size={14} />
-                            Leave a Review
-                          </button>
-                          <a
-                            href="/vehicles"
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all"
-                          >
-                            <Car size={14} />
-                            Book Again
-                          </a>
-                        </>
-                      )}
-
-                      {booking.status !== 'cancelled' && (
-                        <a
-                          href="/support"
-                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all ml-auto"
-                        >
-                          <MessageCircle size={14} />
-                          Get Support
-                        </a>
-                      )}
-
-                      {booking.status === 'cancelled' && (
-                        <p className="text-sm text-gray-500 italic self-center">
-                          This booking was cancelled.
+                    <div className="space-y-4">
+                      {/* Status Change Section */}
+                      <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
+                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+                          <CheckCircle2 size={14} /> Booking Status
                         </p>
-                      )}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {STATUS_TABS.map((status) => {
+                            const isCurrentStatus = booking.status === status;
+                            const statusCfg = STATUS_CONFIG[status];
+                            
+                            let buttonColor = 'bg-gray-200 text-gray-700 hover:bg-gray-300';
+                            
+                            if (!isCurrentStatus) {
+                              if (status === 'confirmed') {
+                                buttonColor = 'bg-green-600 hover:bg-green-700 text-white';
+                              } else if (status === 'completed') {
+                                buttonColor = 'bg-blue-600 hover:bg-blue-700 text-white';
+                              } else if (status === 'cancelled') {
+                                buttonColor = 'bg-red-600 hover:bg-red-700 text-white';
+                              } else if (status === 'pending') {
+                                buttonColor = 'bg-amber-600 hover:bg-amber-700 text-white';
+                              }
+                            }
+                            
+                            return (
+                              <button
+                                key={status}
+                                disabled={isCurrentStatus}
+                                className={`py-2 px-3 rounded-lg font-medium text-xs transition-all flex items-center justify-center gap-1.5 capitalize ${
+                                  isCurrentStatus
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : buttonColor
+                                }`}
+                              >
+                                {statusCfg.icon}
+                                {status}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Main Action Buttons */}
+                      <div className="flex flex-wrap gap-3">
+                        {canCancel(booking.status) && (
+                          <button
+                            onClick={() => setCancelTarget(booking)}
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all"
+                          >
+                            <Ban size={14} />
+                            Cancel Booking
+                          </button>
+                        )}
+
+                        {booking.status === 'completed' && (
+                          <>
+                            <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm">
+                              <Star size={14} />
+                              Leave a Review
+                            </button>
+                            <a
+                              href="/vehicles"
+                              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all"
+                            >
+                              <Car size={14} />
+                              Book Again
+                            </a>
+                          </>
+                        )}
+
+                        {booking.status !== 'cancelled' && (
+                          <a
+                            href="/support"
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all ml-auto"
+                          >
+                            <MessageCircle size={14} />
+                            Get Support
+                          </a>
+                        )}
+
+                        {booking.status === 'cancelled' && (
+                          <p className="text-sm text-gray-500 italic self-center">
+                            This booking was cancelled.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

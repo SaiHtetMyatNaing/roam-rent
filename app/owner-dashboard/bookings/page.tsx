@@ -489,22 +489,49 @@ export default function OwnerBookingsPage() {
   const updateStatus = async (bookingId: string, newStatus: BookingStatus) => {
     setUpdatingId(bookingId);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('bookings')
         .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', bookingId);
+        .eq('id', bookingId)
+        .select('id, status, updated_at')
+        .single();
 
-      if (!error) {
-        setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
-        );
-        const statusLabel = STATUS_CONFIG[newStatus]?.label || newStatus;
-        setToast({ message: `✓ Booking updated to ${statusLabel}`, isError: false });
-      } else {
-        setToast({ message: `✗ Error: ${error.message || 'Failed to update booking'}`, isError: true });
+      console.log('[updateStatus] Supabase response:', { data, error });
+
+      if (error) {
+        console.error('[updateStatus] Error details:', error);
+        setToast({
+          message: `Failed to update: ${error.message || 'Unknown error'}`,
+          isError: true,
+        });
+        return;
       }
+
+      if (!data) {
+        setToast({ message: 'No booking found with this ID', isError: true });
+        return;
+      }
+
+      console.log('[updateStatus] Updated booking status to:', data.status);
+
+      // Optimistic UI update
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === bookingId ? { ...b, status: newStatus as BookingStatus } : b
+        )
+      );
+
+      const statusLabel = STATUS_CONFIG[newStatus]?.label || newStatus;
+      setToast({
+        message: `✓ Booking updated to ${statusLabel}`,
+        isError: false,
+      });
     } catch (err: any) {
-      setToast({ message: `✗ Error: ${err?.message || 'Failed to update booking'}`, isError: true });
+      console.error('[updateStatus] Unexpected error:', err);
+      setToast({
+        message: `Unexpected error: ${err.message || 'Failed to update booking'}`,
+        isError: true,
+      });
     } finally {
       setUpdatingId(null);
     }
@@ -596,6 +623,7 @@ export default function OwnerBookingsPage() {
 
       {toast && <SuccessToast message={toast.message} isError={toast.isError} onClose={() => setToast(null)} />}
 
+      {/* rest of your UI remains unchanged */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white px-6 py-10 shadow-lg">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
@@ -693,9 +721,6 @@ export default function OwnerBookingsPage() {
             const cfg = getStatusConfig(booking.status);
             const imgUrl = getVehicleImg(booking.vehicle);
             const isExpanded = expanded === booking.id;
-            const isPending = booking.status === 'pending';
-            const isCompleted = booking.status === 'completed';
-            const isCancelled = booking.status === 'cancelled';
 
             return (
               <div key={booking.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all">
@@ -743,6 +768,7 @@ export default function OwnerBookingsPage() {
 
                 {isExpanded && (
                   <div className="border-t border-gray-100 px-6 py-6 bg-gray-50/50 space-y-6">
+                    {/* Customer section */}
                     <div className="bg-white rounded-lg border border-gray-200 p-4">
                       <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
                         <User size={14} /> Customer
@@ -764,73 +790,117 @@ export default function OwnerBookingsPage() {
                       )}
                     </div>
 
+                    {/* Trip section */}
                     <div className="bg-white rounded-lg border border-gray-200 p-4">
                       <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
                         <MapPin size={14} /> Trip
                       </p>
                       <div className="space-y-2 text-sm">
-                        <p><span className="text-gray-500">Pick-up:</span> <span className="font-medium">{booking.pickup_location}</span> <span className="text-xs text-gray-500">{formatTime(booking.pickup_date)}</span></p>
-                        <p><span className="text-gray-500">Drop-off:</span> <span className="font-medium">{booking.dropoff_location}</span> <span className="text-xs text-gray-500">{formatTime(booking.dropoff_date)}</span></p>
+                        <p>
+                          <span className="text-gray-500">Pick-up:</span>{' '}
+                          <span className="font-medium">{booking.pickup_location}</span>{' '}
+                          <span className="text-xs text-gray-500">{formatTime(booking.pickup_date)}</span>
+                        </p>
+                        <p>
+                          <span className="text-gray-500">Drop-off:</span>{' '}
+                          <span className="font-medium">{booking.dropoff_location}</span>{' '}
+                          <span className="text-xs text-gray-500">{formatTime(booking.dropoff_date)}</span>
+                        </p>
                       </div>
                     </div>
 
+                    {/* Vehicle section */}
                     {booking.vehicle && (
                       <div className="bg-white rounded-lg border border-gray-200 p-4">
                         <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
                           <Car size={14} /> Vehicle
                         </p>
                         <div className="space-y-1 text-sm">
-                          <p><span className="text-gray-500">Make/Model:</span> <span className="font-medium">{booking.vehicle.make} {booking.vehicle.model}</span></p>
-                          <p><span className="text-gray-500">Year:</span> <span className="font-medium">{booking.vehicle.year}</span></p>
-                          <p><span className="text-gray-500">Plate:</span> <span className="font-mono font-semibold">{booking.vehicle.license_plate}</span></p>
+                          <p>
+                            <span className="text-gray-500">Make/Model:</span>{' '}
+                            <span className="font-medium">{booking.vehicle.make} {booking.vehicle.model}</span>
+                          </p>
+                          <p>
+                            <span className="text-gray-500">Year:</span>{' '}
+                            <span className="font-medium">{booking.vehicle.year}</span>
+                          </p>
+                          <p>
+                            <span className="text-gray-500">Plate:</span>{' '}
+                            <span className="font-mono font-semibold">{booking.vehicle.license_plate}</span>
+                          </p>
                         </div>
                       </div>
                     )}
 
+                    {/* Total Value */}
                     <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                       <div className="flex justify-between items-center">
                         <span className="font-semibold text-gray-700">Total Value</span>
-                        <span className="text-2xl font-bold text-blue-900">${booking.total_price.toFixed(2)}</span>
+                        <span className="text-2xl font-bold text-blue-900">
+                          ${booking.total_price.toFixed(2)}
+                        </span>
                       </div>
                     </div>
 
+                    {/* Action buttons - ALL STATUS BUTTONS */}
                     <div className="space-y-3">
-                      {isPending && (
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => updateStatus(booking.id, 'confirmed')}
-                            disabled={updatingId === booking.id}
-                            className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2"
-                          >
-                            {updatingId === booking.id ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() => updateStatus(booking.id, 'cancelled')}
-                            disabled={updatingId === booking.id}
-                            className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2"
-                          >
-                            {updatingId === booking.id ? <RefreshCw size={16} className="animate-spin" /> : <XCircle size={16} />}
-                            Cancel
-                          </button>
-                        </div>
-                      )}
+                      <p className="text-xs font-semibold text-gray-600 uppercase mb-2 flex items-center gap-2">
+                        <AlertTriangle size={14} /> Change Status
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {STATUS_TABS.map((status) => {
+                          const isCurrentStatus = booking.status === status;
+                          const statusCfg = STATUS_CONFIG[status];
+                          const isUpdating = updatingId === booking.id;
+                          
+                          let buttonColor = 'bg-gray-200 text-gray-700 hover:bg-gray-300';
+                          
+                          if (!isCurrentStatus) {
+                            if (status === 'confirmed') {
+                              buttonColor = 'bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white';
+                            } else if (status === 'completed') {
+                              buttonColor = 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white';
+                            } else if (status === 'cancelled') {
+                              buttonColor = 'bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white';
+                            } else if (status === 'pending') {
+                              buttonColor = 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white';
+                            }
+                          }
+                          
+                          return (
+                            <button
+                              key={status}
+                              onClick={() => updateStatus(booking.id, status)}
+                              disabled={isCurrentStatus || isUpdating}
+                              className={`py-2 px-3 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 capitalize ${
+                                isCurrentStatus
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  : buttonColor
+                              }`}
+                            >
+                              {isUpdating ? (
+                                <RefreshCw size={14} className="animate-spin" />
+                              ) : (
+                                statusCfg.icon
+                              )}
+                              {isCurrentStatus ? (
+                                <span>{status} ✓</span>
+                              ) : (
+                                status
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                      {(isCompleted || isCancelled) && (
-                        <div className="text-center py-3 bg-gray-100 rounded-lg text-sm text-gray-600 font-medium">
-                          This booking is {booking.status}
-                        </div>
-                      )}
-
-                      {(isCompleted || isCancelled) && (
-                        <button
-                          onClick={() => setDisputeBooking(booking)}
-                          className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2"
-                        >
-                          <AlertTriangle size={16} />
-                          File a Dispute
-                        </button>
-                      )}
+                      {/* File Dispute Button */}
+                      <button
+                        onClick={() => setDisputeBooking(booking)}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2 mt-4"
+                      >
+                        <AlertTriangle size={16} />
+                        File a Dispute
+                      </button>
                     </div>
                   </div>
                 )}
