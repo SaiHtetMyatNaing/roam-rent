@@ -12,7 +12,7 @@ import { ReviewModal } from '@/components/review-modal';
 
 const supabase = createClient();
 
-type BookingStatus = 'pending' | 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
+type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 
 type Booking = {
   id: string;

@@ -25,6 +25,8 @@ import { createClient } from '@/lib/supabase/client';
 
 const supabase = createClient();
 
+type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
+
 type Booking = {
   id: string;
   pickup_date: string;
@@ -32,7 +34,7 @@ type Booking = {
   pickup_location: string;
   dropoff_location: string;
   total_price: number;
-  status: 'pending' | 'upcoming' | 'confirmed' | 'completed' | 'cancelled' | 'rejected';
+  status: BookingStatus;
   created_at: string;
   updated_at: string;
   customer: {
@@ -54,10 +56,10 @@ type Booking = {
 
 type DisputePriority = 'low' | 'medium' | 'high' | 'critical';
 
-const STATUS_TABS = ['pending', 'upcoming', 'confirmed', 'completed', 'cancelled', 'rejected'];
+const STATUS_TABS: BookingStatus[] = ['pending', 'confirmed', 'completed', 'cancelled'];
 
 const STATUS_CONFIG: Record<
-  string,
+  BookingStatus,
   {
     label: string;
     color: string;
@@ -73,19 +75,12 @@ const STATUS_CONFIG: Record<
     icon: <Clock size={16} />,
     description: 'Awaiting confirmation',
   },
-  upcoming: {
-    label: 'Upcoming',
-    color: 'text-blue-700',
-    bg: 'bg-blue-50 border-blue-200',
-    icon: <Calendar size={16} />,
-    description: 'Scheduled rental',
-  },
   confirmed: {
     label: 'Confirmed',
     color: 'text-emerald-700',
     bg: 'bg-emerald-50 border-emerald-200',
     icon: <CheckCircle2 size={16} />,
-    description: 'Rental confirmed',
+    description: 'Booking confirmed',
   },
   completed: {
     label: 'Completed',
@@ -100,13 +95,6 @@ const STATUS_CONFIG: Record<
     bg: 'bg-red-50 border-red-200',
     icon: <XCircle size={16} />,
     description: 'Booking cancelled',
-  },
-  rejected: {
-    label: 'Rejected',
-    color: 'text-rose-700',
-    bg: 'bg-rose-50 border-rose-200',
-    icon: <XCircle size={16} />,
-    description: 'Booking rejected',
   },
 };
 
@@ -143,15 +131,11 @@ const DISPUTE_CATEGORIES = [
 
 // Status transition rules: which statuses can transition to which
 const STATUS_TRANSITIONS: Record<
-  Booking['status'],
-  { status: Booking['status']; label: string; variant: 'primary' | 'danger' | 'secondary' }[]
+  BookingStatus,
+  { status: BookingStatus; label: string; variant: 'primary' | 'danger' | 'secondary' }[]
 > = {
   pending: [
-    { status: 'upcoming', label: 'Approve Booking', variant: 'primary' },
-    { status: 'rejected', label: 'Reject Booking', variant: 'danger' },
-  ],
-  upcoming: [
-    { status: 'confirmed', label: 'Confirm Rental', variant: 'primary' },
+    { status: 'confirmed', label: 'Confirm Booking', variant: 'primary' },
     { status: 'cancelled', label: 'Cancel Booking', variant: 'danger' },
   ],
   confirmed: [
@@ -160,7 +144,6 @@ const STATUS_TRANSITIONS: Record<
   ],
   completed: [],
   cancelled: [],
-  rejected: [],
 };
 
 // ─── Dispute Modal ───────────────────────────────────────────────────────────
@@ -416,9 +399,9 @@ function SuccessToast({ message, isError, onClose }: { message: string; isError?
 
 type StatusActionButtonsProps = {
   bookingId: string;
-  currentStatus: Booking['status'];
+  currentStatus: BookingStatus;
   isLoading: boolean;
-  onStatusChange: (bookingId: string, newStatus: Booking['status']) => Promise<void>;
+  onStatusChange: (bookingId: string, newStatus: BookingStatus) => Promise<void>;
 };
 
 function StatusActionButtons({
@@ -476,7 +459,7 @@ export default function OwnerBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState<'all' | BookingStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -565,7 +548,7 @@ export default function OwnerBookingsPage() {
     fetchBookings();
   }, []);
 
-  const updateStatus = async (bookingId: string, newStatus: Booking['status']) => {
+  const updateStatus = async (bookingId: string, newStatus: BookingStatus) => {
     setUpdatingId(bookingId);
     try {
       const { error } = await supabase
@@ -606,11 +589,9 @@ export default function OwnerBookingsPage() {
   const stats = {
     total: bookings.length,
     pending: bookings.filter((b) => b.status === 'pending').length,
-    upcoming: bookings.filter((b) => b.status === 'upcoming').length,
     confirmed: bookings.filter((b) => b.status === 'confirmed').length,
     completed: bookings.filter((b) => b.status === 'completed').length,
     cancelled: bookings.filter((b) => b.status === 'cancelled').length,
-    rejected: bookings.filter((b) => b.status === 'rejected').length,
     revenue: bookings
       .filter((b) => b.status === 'completed')
       .reduce((s, b) => s + b.total_price, 0),
@@ -636,7 +617,7 @@ export default function OwnerBookingsPage() {
     return primary?.url ?? v.vehicle_images[0]?.url ?? null;
   };
 
-  const canDispute = (status: Booking['status']) =>
+  const canDispute = (status: BookingStatus) =>
     status === 'confirmed' || status === 'completed';
 
   if (loading) {
@@ -707,7 +688,7 @@ export default function OwnerBookingsPage() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {[
               {
                 label: 'Total',
@@ -721,12 +702,6 @@ export default function OwnerBookingsPage() {
                 icon: <Clock size={16} />,
                 bg: 'bg-amber-500/20',
                 alert: stats.pending > 0,
-              },
-              {
-                label: 'Upcoming',
-                value: stats.upcoming,
-                icon: <Calendar size={16} />,
-                bg: 'bg-blue-500/20',
               },
               {
                 label: 'Confirmed',

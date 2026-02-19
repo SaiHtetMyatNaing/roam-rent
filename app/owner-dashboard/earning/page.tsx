@@ -50,6 +50,8 @@ const BOOKING_STATUS_CONFIG = {
   cancelled: { label: 'Cancelled', textColor: 'text-red-700',     bgColor: 'bg-red-50',     borderColor: 'border-red-200' },
 };
 
+const FALLBACK_BOOKING_STATUS = { label: 'Unknown', textColor: 'text-slate-700', bgColor: 'bg-slate-100', borderColor: 'border-slate-200' };
+
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 }
@@ -380,7 +382,7 @@ export default function OwnerEarningsPage() {
           ) : (
             <div className="space-y-3">
               {filtered.map(booking => {
-                const cfg = BOOKING_STATUS_CONFIG[booking.status];
+                const cfg = BOOKING_STATUS_CONFIG[booking.status] ?? FALLBACK_BOOKING_STATUS;
                 const isExpanded = expanded === booking.id;
                 const days = daysBetween(booking.pickup_date, booking.dropoff_date);
                 const img = booking.vehicle ? getVehicleImg(booking.vehicle.vehicle_images) : null;
