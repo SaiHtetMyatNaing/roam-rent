@@ -19,7 +19,6 @@ import {
   Phone,
   Mail,
   AlertTriangle,
-  LogOut,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -65,7 +64,6 @@ const STATUS_CONFIG: Record<
     color: string;
     bg: string;
     icon: React.ReactNode;
-    description: string;
   }
 > = {
   pending: {
@@ -73,28 +71,24 @@ const STATUS_CONFIG: Record<
     color: 'text-amber-700',
     bg: 'bg-amber-50 border-amber-200',
     icon: <Clock size={16} />,
-    description: 'Awaiting confirmation',
   },
   confirmed: {
     label: 'Confirmed',
     color: 'text-emerald-700',
     bg: 'bg-emerald-50 border-emerald-200',
     icon: <CheckCircle2 size={16} />,
-    description: 'Booking confirmed',
   },
   completed: {
     label: 'Completed',
     color: 'text-slate-700',
     bg: 'bg-slate-100 border-slate-200',
     icon: <CheckCircle2 size={16} />,
-    description: 'Rental finished',
   },
   cancelled: {
     label: 'Cancelled',
     color: 'text-red-700',
     bg: 'bg-red-50 border-red-200',
     icon: <XCircle size={16} />,
-    description: 'Booking cancelled',
   },
 };
 
@@ -128,23 +122,6 @@ const DISPUTE_CATEGORIES = [
   'No-Show',
   'Other',
 ];
-
-// Status transition rules: which statuses can transition to which
-const STATUS_TRANSITIONS: Record<
-  BookingStatus,
-  { status: BookingStatus; label: string; variant: 'primary' | 'danger' | 'secondary' }[]
-> = {
-  pending: [
-    { status: 'confirmed', label: 'Confirm Booking', variant: 'primary' },
-    { status: 'cancelled', label: 'Cancel Booking', variant: 'danger' },
-  ],
-  confirmed: [
-    { status: 'completed', label: 'Complete Rental', variant: 'primary' },
-    { status: 'cancelled', label: 'Cancel Booking', variant: 'danger' },
-  ],
-  completed: [],
-  cancelled: [],
-};
 
 // ─── Dispute Modal ───────────────────────────────────────────────────────────
 
@@ -294,7 +271,7 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              placeholder="Provide as much detail as possible — what happened, when, and any evidence you have…"
+              placeholder="Provide as much detail as possible…"
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none"
             />
           </div>
@@ -395,64 +372,6 @@ function SuccessToast({ message, isError, onClose }: { message: string; isError?
   );
 }
 
-// ─── Status Transition Buttons ────────────────────────────────────────────────
-
-type StatusActionButtonsProps = {
-  bookingId: string;
-  currentStatus: BookingStatus;
-  isLoading: boolean;
-  onStatusChange: (bookingId: string, newStatus: BookingStatus) => Promise<void>;
-};
-
-function StatusActionButtons({
-  bookingId,
-  currentStatus,
-  isLoading,
-  onStatusChange,
-}: StatusActionButtonsProps) {
-  const transitions = STATUS_TRANSITIONS[currentStatus] || [];
-
-  if (transitions.length === 0) {
-    return (
-      <div className="bg-gray-50 rounded-lg px-4 py-3 text-center">
-        <p className="text-sm text-gray-600 font-medium">
-          No further actions available for {currentStatus} bookings
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap gap-3">
-      {transitions.map((transition) => {
-        const variantStyles = {
-          primary:
-            'bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:bg-blue-300',
-          danger: 'bg-red-600 hover:bg-red-700 text-white shadow-sm disabled:bg-red-300',
-          secondary:
-            'bg-gray-200 hover:bg-gray-300 text-gray-800 disabled:bg-gray-100',
-        };
-
-        return (
-          <button
-            key={transition.status}
-            disabled={isLoading}
-            onClick={() => onStatusChange(bookingId, transition.status)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-60 ${variantStyles[transition.variant]}`}
-          >
-            {isLoading ? (
-              <RefreshCw size={14} className="animate-spin" />
-            ) : (
-              STATUS_CONFIG[transition.status].icon
-            )}
-            {transition.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function OwnerBookingsPage() {
@@ -464,11 +383,7 @@ export default function OwnerBookingsPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [ownerId, setOwnerId] = useState<string | null>(null);
-
-  // Toast state
   const [toast, setToast] = useState<{ message: string; isError?: boolean } | null>(null);
-
-  // Dispute state
   const [disputeBooking, setDisputeBooking] = useState<Booking | null>(null);
 
   const fetchBookings = async () => {
@@ -560,7 +475,6 @@ export default function OwnerBookingsPage() {
         setBookings((prev) =>
           prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
         );
-
         const statusLabel = STATUS_CONFIG[newStatus]?.label || newStatus;
         setToast({ message: `✓ Booking updated to ${statusLabel}`, isError: false });
       } else {
@@ -598,27 +512,16 @@ export default function OwnerBookingsPage() {
   };
 
   const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   const formatTime = (d: string) =>
-    new Date(d).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+    new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   const getVehicleImg = (v: Booking['vehicle']) => {
     if (!v?.vehicle_images?.length) return null;
     const primary = v.vehicle_images.find((i) => i.is_primary);
     return primary?.url ?? v.vehicle_images[0]?.url ?? null;
   };
-
-  const canDispute = (status: BookingStatus) =>
-    status === 'confirmed' || status === 'completed';
 
   if (loading) {
     return (
@@ -669,7 +572,7 @@ export default function OwnerBookingsPage() {
         />
       )}
 
-      {/* Success Toast */}
+      {/* Toast */}
       {toast && <SuccessToast message={toast.message} isError={toast.isError} onClose={() => setToast(null)} />}
 
       {/* Header */}
@@ -677,9 +580,7 @@ export default function OwnerBookingsPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <p className="text-blue-200 text-sm font-semibold tracking-wide uppercase mb-2">
-                Owner Dashboard
-              </p>
+              <p className="text-blue-200 text-sm font-semibold tracking-wide uppercase mb-2">Owner Dashboard</p>
               <h1 className="text-4xl md:text-5xl font-bold">Manage Your Bookings</h1>
             </div>
             <div className="w-16 h-16 bg-white/10 rounded-xl backdrop-blur-sm flex items-center justify-center">
@@ -688,39 +589,14 @@ export default function OwnerBookingsPage() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              {
-                label: 'Total',
-                value: stats.total,
-                icon: <Calendar size={16} />,
-                bg: 'bg-white/10',
-              },
-              {
-                label: 'Pending',
-                value: stats.pending,
-                icon: <Clock size={16} />,
-                bg: 'bg-amber-500/20',
-                alert: stats.pending > 0,
-              },
-              {
-                label: 'Confirmed',
-                value: stats.confirmed,
-                icon: <CheckCircle2 size={16} />,
-                bg: 'bg-emerald-500/20',
-              },
-              {
-                label: 'Completed',
-                value: stats.completed,
-                icon: <CheckCircle2 size={16} />,
-                bg: 'bg-slate-500/20',
-              },
-              {
-                label: 'Revenue',
-                value: `$${stats.revenue.toFixed(0)}`,
-                icon: <DollarSign size={16} />,
-                bg: 'bg-green-500/20',
-              },
+              { label: 'Total', value: stats.total, icon: <Calendar size={16} />, bg: 'bg-white/10' },
+              { label: 'Pending', value: stats.pending, icon: <Clock size={16} />, bg: 'bg-amber-500/20', alert: stats.pending > 0 },
+              { label: 'Confirmed', value: stats.confirmed, icon: <CheckCircle2 size={16} />, bg: 'bg-emerald-500/20' },
+              { label: 'Completed', value: stats.completed, icon: <CheckCircle2 size={16} />, bg: 'bg-slate-500/20' },
+              { label: 'Cancelled', value: stats.cancelled, icon: <XCircle size={16} />, bg: 'bg-red-500/20' },
+              { label: 'Revenue', value: `$${stats.revenue.toFixed(0)}`, icon: <DollarSign size={16} />, bg: 'bg-green-500/20' },
             ].map((s) => (
               <div
                 key={s.label}
@@ -753,7 +629,7 @@ export default function OwnerBookingsPage() {
               />
             </div>
 
-            {/* Status Tabs */}
+            {/* Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-1 w-full sm:w-auto">
               <button
                 onClick={() => setActiveTab('all')}
@@ -763,46 +639,20 @@ export default function OwnerBookingsPage() {
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 }`}
               >
-                All
-                {stats.total > 0 && (
-                  <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                      activeTab === 'all'
-                        ? 'bg-blue-400 text-white'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {stats.total}
-                  </span>
-                )}
+                All {stats.total > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400">{stats.total}</span>}
               </button>
 
               {STATUS_TABS.map((tab) => {
-                const count = stats[tab as keyof typeof stats];
-                const isNumeric = typeof count === 'number';
-
+                const count = stats[tab];
                 return (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 capitalize ${
-                      activeTab === tab
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      activeTab === tab ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                   >
-                    {tab}
-                    {isNumeric && count > 0 && (
-                      <span
-                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                          activeTab === tab
-                            ? 'bg-blue-400 text-white'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        {count}
-                      </span>
-                    )}
+                    {tab} {count > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400">{count}</span>}
                   </button>
                 );
               })}
@@ -815,13 +665,11 @@ export default function OwnerBookingsPage() {
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-5">
         {filtered.length === 0 ? (
           <div className="text-center py-24 bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Car size={32} className="text-gray-400" />
-            </div>
+            <Car size={32} className="text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No bookings found</h3>
-            <p className="text-gray-500 max-w-md mx-auto">
+            <p className="text-gray-500">
               {activeTab === 'all'
-                ? "You haven't received any bookings yet. When customers book your vehicles, they'll appear here."
+                ? "You haven't received any bookings yet."
                 : `No ${activeTab} bookings at the moment.`}
             </p>
           </div>
@@ -830,21 +678,19 @@ export default function OwnerBookingsPage() {
             const cfg = STATUS_CONFIG[booking.status];
             const imgUrl = getVehicleImg(booking.vehicle);
             const isExpanded = expanded === booking.id;
-            const customer = booking.customer;
-            const vehicle = booking.vehicle;
+            const isPending = booking.status === 'pending';
+            const isCompleted = booking.status === 'completed';
+            const isCancelled = booking.status === 'cancelled';
 
             return (
-              <div
-                key={booking.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all"
-              >
-                {/* Header row – clickable */}
+              <div key={booking.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all">
+                {/* Header */}
                 <div
                   className="flex items-center gap-5 p-5 cursor-pointer hover:bg-blue-50/50 transition-colors group"
                   onClick={() => setExpanded(isExpanded ? null : booking.id)}
                 >
                   {/* Thumbnail */}
-                  <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 group-hover:border-blue-300 transition-colors">
+                  <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 group-hover:border-blue-300">
                     {imgUrl ? (
                       <img src={imgUrl} alt="vehicle" className="w-full h-full object-cover" />
                     ) : (
@@ -854,191 +700,121 @@ export default function OwnerBookingsPage() {
                     )}
                   </div>
 
-                  {/* Main info */}
+                  {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
-                        <p className="font-semibold text-gray-900 truncate text-lg">
-                          {vehicle
-                            ? `${vehicle.make} ${vehicle.model}`
-                            : 'Vehicle not found'}
+                        <p className="font-semibold text-gray-900 text-lg">
+                          {booking.vehicle ? `${booking.vehicle.make} ${booking.vehicle.model}` : 'Vehicle not found'}
                         </p>
-                        {vehicle && (
-                          <p className="text-xs text-gray-500 font-medium">
-                            {vehicle.year} • {vehicle.license_plate}
-                          </p>
-                        )}
-                        <p className="text-sm text-gray-600 mt-1">
-                          {customer
-                            ? `${customer.first_name} ${customer.last_name}`
-                            : 'Unknown customer'}
+                        <p className="text-sm text-gray-600">
+                          {booking.customer ? `${booking.customer.first_name} ${booking.customer.last_name}` : '—'}
                         </p>
                       </div>
-
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap ${cfg.bg} ${cfg.color}`}
-                      >
-                        {cfg.icon}
-                        {cfg.label}
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap ${cfg.bg} ${cfg.color}`}>
+                        {cfg.icon} {cfg.label}
                       </span>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-600">
-                      <span className="flex items-center gap-1.5">
-                        <Calendar size={13} className="text-gray-400" />
-                        {formatDate(booking.pickup_date)}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <LogOut size={13} className="text-gray-400" />
-                        {formatDate(booking.dropoff_date)}
-                      </span>
-                      <span className="font-semibold text-blue-700 ml-auto">
-                        ${booking.total_price.toFixed(2)}
-                      </span>
+                    <div className="flex gap-4 text-xs text-gray-600">
+                      <span>{formatDate(booking.pickup_date)}</span>
+                      <span className="font-semibold text-blue-700">${booking.total_price.toFixed(2)}</span>
                     </div>
                   </div>
 
-                  <ChevronDown
-                    size={20}
-                    className={`text-gray-500 transition-transform flex-shrink-0 ${
-                      isExpanded ? 'rotate-180' : ''
-                    }`}
-                  />
+                  <ChevronDown size={20} className={`text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                 </div>
 
-                {/* Expanded content */}
+                {/* Expanded */}
                 {isExpanded && (
                   <div className="border-t border-gray-100 px-6 py-6 bg-gray-50/50 space-y-6">
-                    {/* Customer & Trip Details Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {/* Customer Info Card */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
-                          <User size={14} /> Customer Information
-                        </p>
-                        {customer ? (
-                          <div className="space-y-3">
-                            <div>
-                              <p className="font-semibold text-gray-900 text-base">
-                                {customer.first_name} {customer.last_name}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-0.5">Full name</p>
+                    {/* Customer */}
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                      <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
+                        <User size={14} /> Customer
+                      </p>
+                      {booking.customer ? (
+                        <div className="space-y-2 text-sm">
+                          <p className="font-medium">{booking.customer.first_name} {booking.customer.last_name}</p>
+                          <div className="flex items-center gap-2">
+                            <Mail size={14} className="text-gray-400" /> {booking.customer.email}
+                          </div>
+                          {booking.customer.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone size={14} className="text-gray-400" /> {booking.customer.phone}
                             </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-700">
-                              <Mail size={14} className="text-gray-400" />
-                              {customer.email}
-                            </div>
-                            {customer.phone && (
-                              <div className="flex items-center gap-2 text-sm text-gray-700">
-                                <Phone size={14} className="text-gray-400" />
-                                {customer.phone}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500 italic">
-                            No customer details available
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Trip Details Card */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
-                          <MapPin size={14} /> Trip Details
-                        </p>
-                        <div className="space-y-3">
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              Pick-up
-                            </p>
-                            <p className="font-medium text-gray-900">{booking.pickup_location}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {formatDate(booking.pickup_date)} at {formatTime(booking.pickup_date)}
-                            </p>
-                          </div>
-                          <div className="pt-2 border-t border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              Drop-off
-                            </p>
-                            <p className="font-medium text-gray-900">{booking.dropoff_location}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {formatDate(booking.dropoff_date)} at {formatTime(booking.dropoff_date)}
-                            </p>
-                          </div>
+                          )}
                         </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">No details available</p>
+                      )}
+                    </div>
+
+                    {/* Trip */}
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                      <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
+                        <MapPin size={14} /> Trip
+                      </p>
+                      <div className="space-y-2 text-sm">
+                        <p><span className="text-gray-500">Pick-up:</span> <span className="font-medium">{booking.pickup_location}</span> <span className="text-xs text-gray-500">{formatTime(booking.pickup_date)}</span></p>
+                        <p><span className="text-gray-500">Drop-off:</span> <span className="font-medium">{booking.dropoff_location}</span> <span className="text-xs text-gray-500">{formatTime(booking.dropoff_date)}</span></p>
                       </div>
                     </div>
 
-                    {/* Vehicle Info Card */}
-                    {vehicle && (
-                      <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
-                          <Car size={14} /> Vehicle Details
+                    {/* Vehicle */}
+                    {booking.vehicle && (
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
+                          <Car size={14} /> Vehicle
                         </p>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              Make & Model
-                            </p>
-                            <p className="font-medium text-gray-900">
-                              {vehicle.make} {vehicle.model}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              Year
-                            </p>
-                            <p className="font-medium text-gray-900">{vehicle.year}</p>
-                          </div>
-                          <div className="col-span-2">
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              License Plate
-                            </p>
-                            <p className="font-mono font-semibold text-gray-900 text-lg">
-                              {vehicle.license_plate}
-                            </p>
-                          </div>
+                        <div className="space-y-1 text-sm">
+                          <p><span className="text-gray-500">Make/Model:</span> <span className="font-medium">{booking.vehicle.make} {booking.vehicle.model}</span></p>
+                          <p><span className="text-gray-500">Year:</span> <span className="font-medium">{booking.vehicle.year}</span></p>
+                          <p><span className="text-gray-500">Plate:</span> <span className="font-mono font-semibold">{booking.vehicle.license_plate}</span></p>
                         </div>
                       </div>
                     )}
 
-                    {/* Price Summary */}
-                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-5 border border-blue-200">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-700 font-semibold">Total Value</span>
-                        <span className="text-3xl font-bold text-blue-900">
-                          ${booking.total_price.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Status Description */}
-                    <div className={`${cfg.bg} rounded-lg p-4 border flex items-start gap-3`}>
-                      <div className={`${cfg.color} mt-0.5`}>{cfg.icon}</div>
-                      <div>
-                        <p className={`font-semibold text-sm ${cfg.color}`}>{cfg.label}</p>
-                        <p className="text-xs text-gray-600 mt-1">{cfg.description}</p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          Last updated: {formatDate(booking.updated_at)}
-                        </p>
+                    {/* Price */}
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-gray-700">Total Value</span>
+                        <span className="text-2xl font-bold text-blue-900">${booking.total_price.toFixed(2)}</span>
                       </div>
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="space-y-4">
-                      <StatusActionButtons
-                        bookingId={booking.id}
-                        currentStatus={booking.status}
-                        isLoading={updatingId === booking.id}
-                        onStatusChange={updateStatus}
-                      />
+                    <div className="space-y-3">
+                      {isPending && (
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => updateStatus(booking.id, 'confirmed')}
+                            disabled={updatingId === booking.id}
+                            className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2"
+                          >
+                            {updatingId === booking.id ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => updateStatus(booking.id, 'cancelled')}
+                            disabled={updatingId === booking.id}
+                            className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2"
+                          >
+                            {updatingId === booking.id ? <RefreshCw size={16} className="animate-spin" /> : <XCircle size={16} />}
+                            Cancel
+                          </button>
+                        </div>
+                      )}
 
-                      {/* Dispute Button */}
-                      {canDispute(booking.status) && (
+                      {(isCompleted || isCancelled) && (
+                        <div className="text-center py-3 bg-gray-100 rounded-lg text-sm text-gray-600 font-medium">
+                          This booking is {booking.status}
+                        </div>
+                      )}
+
+                      {(isCompleted || isCancelled) && (
                         <button
                           onClick={() => setDisputeBooking(booking)}
-                          className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all"
+                          className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2"
                         >
                           <AlertTriangle size={16} />
                           File a Dispute
@@ -1055,18 +831,10 @@ export default function OwnerBookingsPage() {
 
       <style jsx global>{`
         @keyframes slide-up {
-          from {
-            transform: translateY(20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
-        .animate-slide-up {
-          animation: slide-up 0.3s ease both;
-        }
+        .animate-slide-up { animation: slide-up 0.3s ease both; }
       `}</style>
     </div>
   );
