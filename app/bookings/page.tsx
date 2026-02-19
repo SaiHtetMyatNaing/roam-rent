@@ -25,7 +25,7 @@ import { createClient } from '@/lib/supabase/client';
 
 const supabase = createClient();
 
-type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
+type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'unknown';
 
 type Booking = {
   id: string;
@@ -34,7 +34,7 @@ type Booking = {
   pickup_location: string;
   dropoff_location: string;
   total_price: number;
-  status: BookingStatus;
+  status: string; // changed from BookingStatus to string to be more defensive
   created_at: string;
   updated_at: string;
   vehicle: {
@@ -93,6 +93,24 @@ const STATUS_CONFIG: Record<
     icon: <XCircle size={16} />,
     description: 'Booking cancelled',
   },
+  unknown: {
+    label: 'Unknown',
+    color: 'text-gray-700',
+    bg: 'bg-gray-100 border-gray-300',
+    icon: <AlertCircle size={16} />,
+    description: 'Status not recognized',
+  },
+};
+
+// Helper to safely get status config
+const getStatusConfig = (status: string | null | undefined) => {
+  const normalized = (status || 'unknown').toLowerCase() as BookingStatus;
+  
+  if (STATUS_CONFIG[normalized]) {
+    return STATUS_CONFIG[normalized];
+  }
+  
+  return STATUS_CONFIG.unknown;
 };
 
 // ─── Cancel Modal ──────────────────────────────────────────────────────────
@@ -139,7 +157,6 @@ function CancelModal({
         className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
@@ -155,7 +172,6 @@ function CancelModal({
         </div>
 
         <div className="px-6 py-6 space-y-4">
-          {/* Booking Details */}
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
             <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">
               Dates
@@ -165,7 +181,6 @@ function CancelModal({
             </p>
           </div>
 
-          {/* Warning */}
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-sm text-red-700 flex items-start gap-2">
               <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
@@ -173,7 +188,6 @@ function CancelModal({
             </p>
           </div>
 
-          {/* Error */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <p className="text-sm text-red-700 flex items-center gap-2">
@@ -183,7 +197,6 @@ function CancelModal({
             </div>
           )}
 
-          {/* Buttons */}
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
@@ -265,6 +278,7 @@ export default function CustomerBookingsPage() {
       } else {
         const normalized: Booking[] = (data ?? []).map((row: any) => ({
           ...row,
+          status: row.status || 'unknown',
           vehicle: Array.isArray(row.vehicle) ? row.vehicle[0] ?? null : row.vehicle ?? null,
         }));
         setBookings(normalized);
@@ -325,7 +339,7 @@ export default function CustomerBookingsPage() {
     );
   };
 
-  const canCancel = (status: BookingStatus) => status === 'pending' || status === 'confirmed';
+  const canCancel = (status: string) => status === 'pending' || status === 'confirmed';
 
   if (loading) {
     return (
@@ -363,7 +377,6 @@ export default function CustomerBookingsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Cancel Modal */}
       {cancelTarget && (
         <CancelModal
           booking={cancelTarget}
@@ -394,7 +407,6 @@ export default function CustomerBookingsPage() {
             </div>
           </div>
 
-          {/* Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {[
               {
@@ -448,7 +460,6 @@ export default function CustomerBookingsPage() {
       <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-            {/* Search */}
             <div className="relative w-full sm:w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input
@@ -460,7 +471,6 @@ export default function CustomerBookingsPage() {
               />
             </div>
 
-            {/* Status Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-1 w-full sm:w-auto">
               <button
                 onClick={() => setActiveTab('all')}
@@ -474,7 +484,7 @@ export default function CustomerBookingsPage() {
               </button>
 
               {STATUS_TABS.map((tab) => {
-                const count = stats[tab as keyof typeof stats];
+                const count = stats[tab as keyof typeof stats] ?? 0;
                 return (
                   <button
                     key={tab}
@@ -516,7 +526,7 @@ export default function CustomerBookingsPage() {
           </div>
         ) : (
           filtered.map((booking) => {
-            const cfg = STATUS_CONFIG[booking.status];
+            const cfg = getStatusConfig(booking.status);
             const imgUrl = getVehicleImg(booking.vehicle);
             const isExpanded = expanded === booking.id;
             const days = daysBetween(booking.pickup_date, booking.dropoff_date);
@@ -526,12 +536,10 @@ export default function CustomerBookingsPage() {
                 key={booking.id}
                 className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all"
               >
-                {/* Header Row */}
                 <div
                   className="flex items-center gap-5 p-5 cursor-pointer hover:bg-blue-50/50 transition-colors group"
                   onClick={() => setExpanded(isExpanded ? null : booking.id)}
                 >
-                  {/* Thumbnail */}
                   <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 group-hover:border-blue-300 transition-colors">
                     {imgUrl ? (
                       <img src={imgUrl} alt="vehicle" className="w-full h-full object-cover" />
@@ -542,7 +550,6 @@ export default function CustomerBookingsPage() {
                     )}
                   </div>
 
-                  {/* Main Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div>
@@ -589,12 +596,9 @@ export default function CustomerBookingsPage() {
                   />
                 </div>
 
-                {/* Expanded Content */}
                 {isExpanded && (
                   <div className="border-t border-gray-100 px-6 py-6 bg-gray-50/50 space-y-6">
-                    {/* Dates & Trip */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {/* Trip Details */}
                       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
                           <Calendar size={14} /> Trip Details
@@ -621,7 +625,6 @@ export default function CustomerBookingsPage() {
                         </div>
                       </div>
 
-                      {/* Payment Breakdown */}
                       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
                           <CreditCard size={14} /> Price Breakdown
@@ -656,7 +659,6 @@ export default function CustomerBookingsPage() {
                       </div>
                     </div>
 
-                    {/* Vehicle Details */}
                     {booking.vehicle && (
                       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
@@ -697,7 +699,6 @@ export default function CustomerBookingsPage() {
                       </div>
                     )}
 
-                    {/* Metadata */}
                     <p className="text-xs text-gray-500">
                       Booked on{' '}
                       {new Date(booking.created_at).toLocaleDateString('en-US', {
@@ -713,9 +714,7 @@ export default function CustomerBookingsPage() {
                         })}`}
                     </p>
 
-                    {/* Action Buttons */}
                     <div className="space-y-4">
-                      {/* Status Change Section */}
                       <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3 flex items-center gap-2">
                           <CheckCircle2 size={14} /> Booking Status
@@ -724,9 +723,9 @@ export default function CustomerBookingsPage() {
                           {STATUS_TABS.map((status) => {
                             const isCurrentStatus = booking.status === status;
                             const statusCfg = STATUS_CONFIG[status];
-                            
+
                             let buttonColor = 'bg-gray-200 text-gray-700 hover:bg-gray-300';
-                            
+
                             if (!isCurrentStatus) {
                               if (status === 'confirmed') {
                                 buttonColor = 'bg-green-600 hover:bg-green-700 text-white';
@@ -738,7 +737,7 @@ export default function CustomerBookingsPage() {
                                 buttonColor = 'bg-amber-600 hover:bg-amber-700 text-white';
                               }
                             }
-                            
+
                             return (
                               <button
                                 key={status}
@@ -757,7 +756,6 @@ export default function CustomerBookingsPage() {
                         </div>
                       </div>
 
-                      {/* Main Action Buttons */}
                       <div className="flex flex-wrap gap-3">
                         {canCancel(booking.status) && (
                           <button
