@@ -16,8 +16,10 @@ import {
   RefreshCw,
   Flag,
   X,
-  ChevronRight,
-  FileWarning,
+  Phone,
+  Mail,
+  AlertTriangle,
+  LogOut,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -30,8 +32,9 @@ type Booking = {
   pickup_location: string;
   dropoff_location: string;
   total_price: number;
-  status: 'pending' | 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
+  status: 'pending' | 'upcoming' | 'confirmed' | 'completed' | 'cancelled' | 'rejected';
   created_at: string;
+  updated_at: string;
   customer: {
     first_name: string;
     last_name: string;
@@ -51,21 +54,80 @@ type Booking = {
 
 type DisputePriority = 'low' | 'medium' | 'high' | 'critical';
 
-const STATUS_TABS = ['All', 'Pending', 'Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
+const STATUS_TABS = ['pending', 'upcoming', 'confirmed', 'completed', 'cancelled', 'rejected'];
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-  pending:   { label: 'Pending',   color: 'text-amber-700',     bg: 'bg-amber-50 border-amber-200',    icon: <Clock size={13} /> },
-  upcoming:  { label: 'Upcoming',  color: 'text-blue-700',      bg: 'bg-blue-50 border-blue-200',      icon: <Calendar size={13} /> },
-  ongoing:   { label: 'Ongoing',   color: 'text-emerald-700',   bg: 'bg-emerald-50 border-emerald-200', icon: <RefreshCw size={13} /> },
-  completed: { label: 'Completed', color: 'text-slate-700',     bg: 'bg-slate-100 border-slate-200',   icon: <CheckCircle2 size={13} /> },
-  cancelled: { label: 'Cancelled', color: 'text-red-700',       bg: 'bg-red-50 border-red-200',        icon: <XCircle size={13} /> },
+const STATUS_CONFIG: Record<
+  string,
+  {
+    label: string;
+    color: string;
+    bg: string;
+    icon: React.ReactNode;
+    description: string;
+  }
+> = {
+  pending: {
+    label: 'Pending',
+    color: 'text-amber-700',
+    bg: 'bg-amber-50 border-amber-200',
+    icon: <Clock size={16} />,
+    description: 'Awaiting confirmation',
+  },
+  upcoming: {
+    label: 'Upcoming',
+    color: 'text-blue-700',
+    bg: 'bg-blue-50 border-blue-200',
+    icon: <Calendar size={16} />,
+    description: 'Scheduled rental',
+  },
+  confirmed: {
+    label: 'Confirmed',
+    color: 'text-emerald-700',
+    bg: 'bg-emerald-50 border-emerald-200',
+    icon: <CheckCircle2 size={16} />,
+    description: 'Rental confirmed',
+  },
+  completed: {
+    label: 'Completed',
+    color: 'text-slate-700',
+    bg: 'bg-slate-100 border-slate-200',
+    icon: <CheckCircle2 size={16} />,
+    description: 'Rental finished',
+  },
+  cancelled: {
+    label: 'Cancelled',
+    color: 'text-red-700',
+    bg: 'bg-red-50 border-red-200',
+    icon: <XCircle size={16} />,
+    description: 'Booking cancelled',
+  },
+  rejected: {
+    label: 'Rejected',
+    color: 'text-rose-700',
+    bg: 'bg-rose-50 border-rose-200',
+    icon: <XCircle size={16} />,
+    description: 'Booking rejected',
+  },
 };
 
-const PRIORITY_CONFIG: Record<DisputePriority, { label: string; color: string; bg: string; border: string }> = {
-  low:      { label: 'Low',      color: 'text-slate-600',  bg: 'bg-slate-50',   border: 'border-slate-200' },
-  medium:   { label: 'Medium',   color: 'text-amber-700',  bg: 'bg-amber-50',   border: 'border-amber-200' },
-  high:     { label: 'High',     color: 'text-orange-700', bg: 'bg-orange-50',  border: 'border-orange-200' },
-  critical: { label: 'Critical', color: 'text-red-700',    bg: 'bg-red-50',     border: 'border-red-200' },
+const PRIORITY_CONFIG: Record<
+  DisputePriority,
+  { label: string; color: string; bg: string; border: string }
+> = {
+  low: { label: 'Low', color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
+  medium: {
+    label: 'Medium',
+    color: 'text-amber-700',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+  },
+  high: { label: 'High', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
+  critical: {
+    label: 'Critical',
+    color: 'text-red-700',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+  },
 };
 
 const DISPUTE_CATEGORIES = [
@@ -79,10 +141,26 @@ const DISPUTE_CATEGORIES = [
   'Other',
 ];
 
-const NEXT_STATUSES: Partial<Record<Booking['status'], Booking['status'][]>> = {
-  pending:  ['upcoming', 'cancelled'],
-  upcoming: ['ongoing',  'cancelled'],
-  ongoing:  ['completed'],
+// Status transition rules: which statuses can transition to which
+const STATUS_TRANSITIONS: Record<
+  Booking['status'],
+  { status: Booking['status']; label: string; variant: 'primary' | 'danger' | 'secondary' }[]
+> = {
+  pending: [
+    { status: 'upcoming', label: 'Approve Booking', variant: 'primary' },
+    { status: 'rejected', label: 'Reject Booking', variant: 'danger' },
+  ],
+  upcoming: [
+    { status: 'confirmed', label: 'Confirm Rental', variant: 'primary' },
+    { status: 'cancelled', label: 'Cancel Booking', variant: 'danger' },
+  ],
+  confirmed: [
+    { status: 'completed', label: 'Complete Rental', variant: 'primary' },
+    { status: 'cancelled', label: 'Cancel Booking', variant: 'danger' },
+  ],
+  completed: [],
+  cancelled: [],
+  rejected: [],
 };
 
 // ─── Dispute Modal ───────────────────────────────────────────────────────────
@@ -95,12 +173,12 @@ type DisputeModalProps = {
 };
 
 function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModalProps) {
-  const [title, setTitle]           = useState('');
-  const [category, setCategory]     = useState('');
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority]     = useState<DisputePriority>('medium');
+  const [priority, setPriority] = useState<DisputePriority>('medium');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError]           = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!title.trim() || !category || !description.trim()) {
@@ -113,12 +191,12 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
     const fullTitle = `[${category}] ${title.trim()}`;
 
     const { error: dbError } = await supabase.from('disputes').insert({
-      booking_id:   booking.id,
+      booking_id: booking.id,
       submitted_by: submitterId,
-      title:        fullTitle,
-      description:  description.trim(),
+      title: fullTitle,
+      description: description.trim(),
       priority,
-      status:       'open',
+      status: 'open',
     });
 
     setSubmitting(false);
@@ -131,10 +209,11 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
     }
   };
 
-  // Lock scroll
   useEffect(() => {
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, []);
 
   const vehicle = booking.vehicle;
@@ -142,13 +221,8 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Panel */}
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
@@ -159,7 +233,9 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             <div>
               <h2 className="font-bold text-gray-900 text-base">File a Dispute</h2>
               <p className="text-xs text-gray-500">
-                {vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.year}` : 'Unknown vehicle'}
+                {vehicle
+                  ? `${vehicle.make} ${vehicle.model} · ${vehicle.year}`
+                  : 'Unknown vehicle'}
               </p>
             </div>
           </div>
@@ -174,7 +250,9 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
         <div className="px-6 py-5 space-y-5">
           {/* Booking reference */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm space-y-1">
-            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wide mb-2">Booking Reference</p>
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wide mb-2">
+              Booking Reference
+            </p>
             <p>
               <span className="text-gray-500">Customer: </span>
               <span className="font-medium text-gray-800">
@@ -189,11 +267,11 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
               Category <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {DISPUTE_CATEGORIES.map(cat => (
+              {DISPUTE_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
                   type="button"
@@ -218,7 +296,7 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             <input
               type="text"
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="Brief description of the issue…"
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
             />
@@ -231,7 +309,7 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             </label>
             <textarea
               value={description}
-              onChange={e => setDescription(e.target.value)}
+              onChange={(e) => setDescription(e.target.value)}
               rows={4}
               placeholder="Provide as much detail as possible — what happened, when, and any evidence you have…"
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none"
@@ -240,9 +318,9 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
 
           {/* Priority */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Priority</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
             <div className="flex gap-2">
-              {(Object.keys(PRIORITY_CONFIG) as DisputePriority[]).map(p => {
+              {(Object.keys(PRIORITY_CONFIG) as DisputePriority[]).map((p) => {
                 const cfg = PRIORITY_CONFIG[p];
                 return (
                   <button
@@ -295,20 +373,37 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
 
 // ─── Success Toast ────────────────────────────────────────────────────────────
 
-function SuccessToast({ onClose }: { onClose: () => void }) {
+function SuccessToast({ message, isError, onClose }: { message: string; isError?: boolean; onClose: () => void }) {
   useEffect(() => {
     const t = setTimeout(onClose, 4000);
     return () => clearTimeout(t);
   }, [onClose]);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 bg-white border border-green-200 rounded-xl shadow-xl px-5 py-4 flex items-center gap-3 animate-slide-up">
-      <div className="w-9 h-9 bg-green-100 rounded-full flex items-center justify-center">
-        <CheckCircle2 size={18} className="text-green-600" />
+    <div className={`fixed bottom-6 right-6 z-50 bg-white rounded-xl shadow-xl px-5 py-4 flex items-center gap-3 animate-slide-up ${
+      isError 
+        ? 'border border-red-200' 
+        : 'border border-green-200'
+    }`}>
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+        isError 
+          ? 'bg-red-100' 
+          : 'bg-green-100'
+      }`}>
+        {isError ? (
+          <AlertCircle size={18} className="text-red-600" />
+        ) : (
+          <CheckCircle2 size={18} className="text-green-600" />
+        )}
       </div>
-      <div>
-        <p className="font-semibold text-gray-900 text-sm">Dispute submitted</p>
-        <p className="text-xs text-gray-500">Our team will review it within 24–48h</p>
+      <div className="flex-1">
+        <p className={`font-semibold text-sm ${
+          isError 
+            ? 'text-red-900' 
+            : 'text-gray-900'
+        }`}>
+          {message}
+        </p>
       </div>
       <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600">
         <X size={15} />
@@ -317,170 +412,350 @@ function SuccessToast({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Status Transition Buttons ────────────────────────────────────────────────
+
+type StatusActionButtonsProps = {
+  bookingId: string;
+  currentStatus: Booking['status'];
+  isLoading: boolean;
+  onStatusChange: (bookingId: string, newStatus: Booking['status']) => Promise<void>;
+};
+
+function StatusActionButtons({
+  bookingId,
+  currentStatus,
+  isLoading,
+  onStatusChange,
+}: StatusActionButtonsProps) {
+  const transitions = STATUS_TRANSITIONS[currentStatus] || [];
+
+  if (transitions.length === 0) {
+    return (
+      <div className="bg-gray-50 rounded-lg px-4 py-3 text-center">
+        <p className="text-sm text-gray-600 font-medium">
+          No further actions available for {currentStatus} bookings
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      {transitions.map((transition) => {
+        const variantStyles = {
+          primary:
+            'bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:bg-blue-300',
+          danger: 'bg-red-600 hover:bg-red-700 text-white shadow-sm disabled:bg-red-300',
+          secondary:
+            'bg-gray-200 hover:bg-gray-300 text-gray-800 disabled:bg-gray-100',
+        };
+
+        return (
+          <button
+            key={transition.status}
+            disabled={isLoading}
+            onClick={() => onStatusChange(bookingId, transition.status)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-60 ${variantStyles[transition.variant]}`}
+          >
+            {isLoading ? (
+              <RefreshCw size={14} className="animate-spin" />
+            ) : (
+              STATUS_CONFIG[transition.status].icon
+            )}
+            {transition.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function OwnerBookingsPage() {
-  const [bookings, setBookings]     = useState<Booking[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState<string | null>(null);
-  const [activeTab, setActiveTab]   = useState('All');
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [expanded, setExpanded]     = useState<string | null>(null);
-  const [ownerId, setOwnerId]       = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; isError?: boolean } | null>(null);
 
   // Dispute state
   const [disputeBooking, setDisputeBooking] = useState<Booking | null>(null);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const fetchBookings = async () => {
     setLoading(true);
-    const email = localStorage.getItem('user_email');
-    if (!email) { window.location.href = '/sign-in'; return; }
+    try {
+      const email = localStorage.getItem('user_email');
+      if (!email) {
+        window.location.href = '/sign-in';
+        return;
+      }
 
-    const { data: owner } = await supabase
-      .from('users').select('id').eq('email', email.trim().toLowerCase()).single();
+      const { data: owner, error: ownerError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email.trim().toLowerCase())
+        .single();
 
-    if (!owner) { setError('Owner not found'); setLoading(false); return; }
+      if (ownerError || !owner) {
+        setError('Owner not found');
+        setLoading(false);
+        return;
+      }
 
-    setOwnerId(owner.id);
+      setOwnerId(owner.id);
 
-    const { data: ownerVehicles } = await supabase
-      .from('vehicles').select('id').eq('owner_id', owner.id);
+      const { data: ownerVehicles, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('id')
+        .eq('owner_id', owner.id);
 
-    const vehicleIds = (ownerVehicles ?? []).map((v: any) => v.id);
+      if (vehicleError) {
+        setError(vehicleError.message);
+        setLoading(false);
+        return;
+      }
 
-    if (vehicleIds.length === 0) {
-      setBookings([]);
-      setLoading(false);
-      return;
-    }
+      const vehicleIds = (ownerVehicles ?? []).map((v: any) => v.id);
 
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(`
+      if (vehicleIds.length === 0) {
+        setBookings([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error: bookingError } = await supabase
+        .from('bookings')
+        .select(
+          `
         id, pickup_date, dropoff_date, pickup_location, dropoff_location,
-        total_price, status, created_at,
+        total_price, status, created_at, updated_at,
         customer:customer_id (first_name, last_name, email, phone, avatar_url),
         vehicle:vehicle_id (id, make, model, year, license_plate,
           vehicle_images (url, is_primary))
-      `)
-      .in('vehicle_id', vehicleIds)
-      .order('created_at', { ascending: false });
+      `
+        )
+        .in('vehicle_id', vehicleIds)
+        .order('created_at', { ascending: false });
 
-    if (error) setError(error.message);
-    else {
-      const transformedData = (data ?? []).map((item: any) => ({
-        ...item,
-        customer: Array.isArray(item.customer) ? (item.customer[0] ?? null) : (item.customer ?? null),
-        vehicle:  Array.isArray(item.vehicle)  ? (item.vehicle[0]  ?? null) : (item.vehicle  ?? null),
-      }));
-      setBookings(transformedData as Booking[]);
+      if (bookingError) {
+        setError(bookingError.message);
+      } else {
+        const transformedData = (data ?? []).map((item: any) => ({
+          ...item,
+          customer: Array.isArray(item.customer)
+            ? item.customer[0] ?? null
+            : item.customer ?? null,
+          vehicle: Array.isArray(item.vehicle) ? item.vehicle[0] ?? null : item.vehicle ?? null,
+        }));
+        setBookings(transformedData as Booking[]);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  useEffect(() => { fetchBookings(); }, []);
+  useEffect(() => {
+    fetchBookings();
+  }, []);
 
   const updateStatus = async (bookingId: string, newStatus: Booking['status']) => {
     setUpdatingId(bookingId);
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', bookingId);
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', bookingId);
 
-    if (!error) {
-      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b));
+      if (!error) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
+        );
+
+        const statusLabel = STATUS_CONFIG[newStatus]?.label || newStatus;
+        setToast({ message: `✓ Booking updated to ${statusLabel}`, isError: false });
+      } else {
+        setToast({ message: `✗ Error: ${error.message || 'Failed to update booking'}`, isError: true });
+      }
+    } catch (err: any) {
+      setToast({ message: `✗ Error: ${err?.message || 'Failed to update booking'}`, isError: true });
+    } finally {
+      setUpdatingId(null);
     }
-    setUpdatingId(null);
   };
 
-  const filtered = bookings.filter(b => {
+  const filtered = bookings.filter((b) => {
     const s = searchTerm.toLowerCase();
     const matchSearch =
       (b.customer?.first_name?.toLowerCase() ?? '').includes(s) ||
-      (b.customer?.last_name?.toLowerCase()  ?? '').includes(s) ||
-      (b.customer?.email?.toLowerCase()      ?? '').includes(s) ||
-      (b.vehicle?.make?.toLowerCase()        ?? '').includes(s) ||
-      (b.vehicle?.model?.toLowerCase()       ?? '').includes(s);
-    const matchTab = activeTab === 'All' || b.status === activeTab.toLowerCase();
+      (b.customer?.last_name?.toLowerCase() ?? '').includes(s) ||
+      (b.customer?.email?.toLowerCase() ?? '').includes(s) ||
+      (b.vehicle?.make?.toLowerCase() ?? '').includes(s) ||
+      (b.vehicle?.model?.toLowerCase() ?? '').includes(s) ||
+      (b.vehicle?.license_plate?.toLowerCase() ?? '').includes(s);
+    const matchTab = activeTab === 'all' || b.status === activeTab;
     return matchSearch && matchTab;
   });
 
   const stats = {
-    total:   bookings.length,
-    pending: bookings.filter(b => b.status === 'pending').length,
-    ongoing: bookings.filter(b => b.status === 'ongoing').length,
-    revenue: bookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_price, 0),
+    total: bookings.length,
+    pending: bookings.filter((b) => b.status === 'pending').length,
+    upcoming: bookings.filter((b) => b.status === 'upcoming').length,
+    confirmed: bookings.filter((b) => b.status === 'confirmed').length,
+    completed: bookings.filter((b) => b.status === 'completed').length,
+    cancelled: bookings.filter((b) => b.status === 'cancelled').length,
+    rejected: bookings.filter((b) => b.status === 'rejected').length,
+    revenue: bookings
+      .filter((b) => b.status === 'completed')
+      .reduce((s, b) => s + b.total_price, 0),
   };
 
   const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    new Date(d).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+  const formatTime = (d: string) =>
+    new Date(d).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
 
   const getVehicleImg = (v: Booking['vehicle']) => {
     if (!v?.vehicle_images?.length) return null;
-    const primary = v.vehicle_images.find(i => i.is_primary);
+    const primary = v.vehicle_images.find((i) => i.is_primary);
     return primary?.url ?? v.vehicle_images[0]?.url ?? null;
   };
 
-  // Bookings that can have disputes: ongoing or completed
   const canDispute = (status: Booking['status']) =>
-    status === 'ongoing' || status === 'completed';
+    status === 'confirmed' || status === 'completed';
 
-  if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-blue-700 font-medium">Loading bookings...</p>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="text-center">
+            <p className="text-blue-700 font-semibold text-lg">Loading bookings...</p>
+            <p className="text-gray-500 text-sm mt-1">Fetching your rental data</p>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (error) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-red-600 flex items-center gap-2"><AlertCircle size={20} /> {error}</div>
-    </div>
-  );
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="text-red-600" size={24} />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Bookings</h3>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => fetchBookings()}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Dispute Modal */}
       {disputeBooking && ownerId && (
         <DisputeModal
           booking={disputeBooking}
           submitterId={ownerId}
           onClose={() => setDisputeBooking(null)}
-          onSuccess={() => setShowSuccessToast(true)}
+          onSuccess={() => {
+            setToast({ message: 'Dispute submitted successfully' });
+            fetchBookings();
+          }}
         />
       )}
 
       {/* Success Toast */}
-      {showSuccessToast && (
-        <SuccessToast onClose={() => setShowSuccessToast(false)} />
-      )}
+      {toast && <SuccessToast message={toast.message} isError={toast.isError} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-700 to-blue-900 text-white px-6 py-10 shadow-lg">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-blue-200 text-sm font-medium tracking-wide uppercase mb-2">Owner Dashboard</p>
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">Manage Your Bookings</h1>
+      <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white px-6 py-10 shadow-lg">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <p className="text-blue-200 text-sm font-semibold tracking-wide uppercase mb-2">
+                Owner Dashboard
+              </p>
+              <h1 className="text-4xl md:text-5xl font-bold">Manage Your Bookings</h1>
+            </div>
+            <div className="w-16 h-16 bg-white/10 rounded-xl backdrop-blur-sm flex items-center justify-center">
+              <Car size={32} className="text-blue-200" />
+            </div>
+          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: 'Total Bookings', value: stats.total,                      icon: <Calendar size={18} /> },
-              { label: 'Pending',        value: stats.pending,                    icon: <Clock size={18} />, alert: stats.pending > 0 },
-              { label: 'Active Rentals', value: stats.ongoing,                    icon: <RefreshCw size={18} /> },
-              { label: 'Total Revenue',  value: `$${stats.revenue.toFixed(0)}`,   icon: <DollarSign size={18} /> },
+              {
+                label: 'Total',
+                value: stats.total,
+                icon: <Calendar size={16} />,
+                bg: 'bg-white/10',
+              },
+              {
+                label: 'Pending',
+                value: stats.pending,
+                icon: <Clock size={16} />,
+                bg: 'bg-amber-500/20',
+                alert: stats.pending > 0,
+              },
+              {
+                label: 'Upcoming',
+                value: stats.upcoming,
+                icon: <Calendar size={16} />,
+                bg: 'bg-blue-500/20',
+              },
+              {
+                label: 'Confirmed',
+                value: stats.confirmed,
+                icon: <CheckCircle2 size={16} />,
+                bg: 'bg-emerald-500/20',
+              },
+              {
+                label: 'Completed',
+                value: stats.completed,
+                icon: <CheckCircle2 size={16} />,
+                bg: 'bg-slate-500/20',
+              },
+              {
+                label: 'Revenue',
+                value: `$${stats.revenue.toFixed(0)}`,
+                icon: <DollarSign size={16} />,
+                bg: 'bg-green-500/20',
+              },
             ].map((s) => (
               <div
                 key={s.label}
-                className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 text-center transition-all hover:bg-white/20 ${
-                  s.alert ? 'ring-2 ring-blue-300 ring-offset-2 ring-offset-blue-800' : ''
+                className={`${s.bg} backdrop-blur-sm border border-white/20 rounded-lg p-3 text-center transition-all hover:bg-white/20 ${
+                  s.alert ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-blue-700' : ''
                 }`}
               >
-                <div className="mb-2 text-blue-200">{s.icon}</div>
-                <p className="text-2xl font-bold">{s.value}</p>
-                <p className="text-xs text-blue-200 mt-1">{s.label}</p>
+                <div className="text-blue-100 mb-1.5">{s.icon}</div>
+                <p className="text-xl font-bold text-white">{s.value}</p>
+                <p className="text-xs text-blue-100 mt-0.5">{s.label}</p>
               </div>
             ))}
           </div>
@@ -488,79 +763,117 @@ export default function OwnerBookingsPage() {
       </div>
 
       {/* Controls */}
-      <div className="bg-white border-b border-gray-200 shadow-sm px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input
-              type="text"
-              placeholder="Search customer or vehicle..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200/50 outline-none transition-all"
-            />
-          </div>
+      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+            {/* Search */}
+            <div className="relative w-full sm:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input
+                type="text"
+                placeholder="Search customer, email, vehicle…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200/50 outline-none transition-all"
+              />
+            </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {STATUS_TABS.map(tab => (
+            {/* Status Tabs */}
+            <div className="flex gap-2 overflow-x-auto pb-1 w-full sm:w-auto">
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-shrink-0 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === tab
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                onClick={() => setActiveTab('all')}
+                className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  activeTab === 'all'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 }`}
               >
-                {tab}
-                {tab === 'Pending' && stats.pending > 0 && (
-                  <span className="ml-1.5 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                    {stats.pending}
+                All
+                {stats.total > 0 && (
+                  <span
+                    className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      activeTab === 'all'
+                        ? 'bg-blue-400 text-white'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {stats.total}
                   </span>
                 )}
               </button>
-            ))}
+
+              {STATUS_TABS.map((tab) => {
+                const count = stats[tab as keyof typeof stats];
+                const isNumeric = typeof count === 'number';
+
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 capitalize ${
+                      activeTab === tab
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {tab}
+                    {isNumeric && count > 0 && (
+                      <span
+                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                          activeTab === tab
+                            ? 'bg-blue-400 text-white'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Bookings List */}
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-5">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-5">
         {filtered.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-xl border border-gray-200 shadow-sm">
-            <Calendar className="mx-auto text-gray-400 mb-4" size={64} strokeWidth={1.2} />
+          <div className="text-center py-24 bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Car size={32} className="text-gray-400" />
+            </div>
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No bookings found</h3>
             <p className="text-gray-500 max-w-md mx-auto">
-              {activeTab === 'All'
-                ? "You haven't received any bookings yet."
-                : `No ${activeTab.toLowerCase()} bookings at the moment.`}
+              {activeTab === 'all'
+                ? "You haven't received any bookings yet. When customers book your vehicles, they'll appear here."
+                : `No ${activeTab} bookings at the moment.`}
             </p>
           </div>
         ) : (
-          filtered.map(booking => {
+          filtered.map((booking) => {
             const cfg = STATUS_CONFIG[booking.status];
             const imgUrl = getVehicleImg(booking.vehicle);
             const isExpanded = expanded === booking.id;
-            const nextStatuses = NEXT_STATUSES[booking.status] ?? [];
             const customer = booking.customer;
-            const vehicle  = booking.vehicle;
+            const vehicle = booking.vehicle;
 
             return (
               <div
                 key={booking.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
+                className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all"
               >
                 {/* Header row – clickable */}
                 <div
-                  className="flex items-center gap-5 p-5 cursor-pointer hover:bg-blue-50/40 transition-colors"
+                  className="flex items-center gap-5 p-5 cursor-pointer hover:bg-blue-50/50 transition-colors group"
                   onClick={() => setExpanded(isExpanded ? null : booking.id)}
                 >
                   {/* Thumbnail */}
-                  <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
+                  <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 group-hover:border-blue-300 transition-colors">
                     {imgUrl ? (
-                      <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                      <img src={imgUrl} alt="vehicle" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-blue-50">
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
                         <Car size={28} className="text-blue-400" />
                       </div>
                     )}
@@ -568,29 +881,43 @@ export default function OwnerBookingsPage() {
 
                   {/* Main info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start justify-between gap-4 mb-3">
                       <div>
                         <p className="font-semibold text-gray-900 truncate text-lg">
-                          {vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.year}` : 'Vehicle not found'}
+                          {vehicle
+                            ? `${vehicle.make} ${vehicle.model}`
+                            : 'Vehicle not found'}
                         </p>
-                        <p className="text-sm text-gray-600 mt-0.5">
-                          {customer ? `${customer.first_name} ${customer.last_name}` : '—'}
+                        {vehicle && (
+                          <p className="text-xs text-gray-500 font-medium">
+                            {vehicle.year} • {vehicle.license_plate}
+                          </p>
+                        )}
+                        <p className="text-sm text-gray-600 mt-1">
+                          {customer
+                            ? `${customer.first_name} ${customer.last_name}`
+                            : 'Unknown customer'}
                         </p>
                       </div>
 
                       <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${cfg.bg} ${cfg.color}`}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap ${cfg.bg} ${cfg.color}`}
                       >
-                        {cfg.icon} {cfg.label}
+                        {cfg.icon}
+                        {cfg.label}
                       </span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2 text-sm text-gray-600">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-600">
                       <span className="flex items-center gap-1.5">
-                        <Calendar size={14} className="text-gray-400" />
-                        {formatDate(booking.pickup_date)} → {formatDate(booking.dropoff_date)}
+                        <Calendar size={13} className="text-gray-400" />
+                        {formatDate(booking.pickup_date)}
                       </span>
-                      <span className="font-medium text-blue-700">
+                      <span className="flex items-center gap-1.5">
+                        <LogOut size={13} className="text-gray-400" />
+                        {formatDate(booking.dropoff_date)}
+                      </span>
+                      <span className="font-semibold text-blue-700 ml-auto">
                         ${booking.total_price.toFixed(2)}
                       </span>
                     </div>
@@ -598,95 +925,149 @@ export default function OwnerBookingsPage() {
 
                   <ChevronDown
                     size={20}
-                    className={`text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`text-gray-500 transition-transform flex-shrink-0 ${
+                      isExpanded ? 'rotate-180' : ''
+                    }`}
                   />
                 </div>
 
                 {/* Expanded content */}
                 {isExpanded && (
-                  <div className="border-t border-gray-100 px-5 pb-6 pt-5 bg-gray-50/40">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
-                      {/* Customer */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                          <User size={14} /> Customer Info
+                  <div className="border-t border-gray-100 px-6 py-6 bg-gray-50/50 space-y-6">
+                    {/* Customer & Trip Details Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {/* Customer Info Card */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
+                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
+                          <User size={14} /> Customer Information
                         </p>
                         {customer ? (
-                          <div className="space-y-1.5 text-sm">
-                            <p className="font-medium text-gray-900">
-                              {customer.first_name} {customer.last_name}
-                            </p>
-                            <p className="text-gray-600">{customer.email}</p>
-                            {customer.phone && <p className="text-gray-600">{customer.phone}</p>}
+                          <div className="space-y-3">
+                            <div>
+                              <p className="font-semibold text-gray-900 text-base">
+                                {customer.first_name} {customer.last_name}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5">Full name</p>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Mail size={14} className="text-gray-400" />
+                              {customer.email}
+                            </div>
+                            {customer.phone && (
+                              <div className="flex items-center gap-2 text-sm text-gray-700">
+                                <Phone size={14} className="text-gray-400" />
+                                {customer.phone}
+                              </div>
+                            )}
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-500 italic">No customer details available</p>
+                          <p className="text-sm text-gray-500 italic">
+                            No customer details available
+                          </p>
                         )}
                       </div>
 
-                      {/* Trip */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                      {/* Trip Details Card */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
+                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
                           <MapPin size={14} /> Trip Details
                         </p>
-                        <div className="space-y-2 text-sm">
-                          <p><span className="text-gray-500">Pick-up:</span> <span className="font-medium">{booking.pickup_location}</span></p>
-                          <p><span className="text-gray-500">Drop-off:</span> <span className="font-medium">{booking.dropoff_location}</span></p>
-                          <p><span className="text-gray-500">Booked on:</span> <span className="font-medium">{formatDate(booking.created_at)}</span></p>
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
+                              Pick-up
+                            </p>
+                            <p className="font-medium text-gray-900">{booking.pickup_location}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {formatDate(booking.pickup_date)} at {formatTime(booking.pickup_date)}
+                            </p>
+                          </div>
+                          <div className="pt-2 border-t border-gray-100">
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
+                              Drop-off
+                            </p>
+                            <p className="font-medium text-gray-900">{booking.dropoff_location}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {formatDate(booking.dropoff_date)} at {formatTime(booking.dropoff_date)}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Price */}
-                    <div className="flex items-center justify-between bg-blue-50/70 rounded-lg p-4 mb-6 border border-blue-100">
-                      <span className="text-gray-700 font-medium">Total Value</span>
-                      <span className="text-xl font-bold text-blue-800">
-                        ${booking.total_price.toFixed(2)}
-                      </span>
+                    {/* Vehicle Info Card */}
+                    {vehicle && (
+                      <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
+                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
+                          <Car size={14} /> Vehicle Details
+                        </p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
+                              Make & Model
+                            </p>
+                            <p className="font-medium text-gray-900">
+                              {vehicle.make} {vehicle.model}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
+                              Year
+                            </p>
+                            <p className="font-medium text-gray-900">{vehicle.year}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
+                              License Plate
+                            </p>
+                            <p className="font-mono font-semibold text-gray-900 text-lg">
+                              {vehicle.license_plate}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Price Summary */}
+                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-5 border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700 font-semibold">Total Value</span>
+                        <span className="text-3xl font-bold text-blue-900">
+                          ${booking.total_price.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-3">
-                      {nextStatuses.length > 0 && nextStatuses.map(ns => {
-                        const nsCfg = STATUS_CONFIG[ns];
-                        const isPositive = ns !== 'cancelled';
-                        return (
-                          <button
-                            key={ns}
-                            disabled={updatingId === booking.id}
-                            onClick={() => updateStatus(booking.id, ns)}
-                            className={`
-                              flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-60
-                              ${isPositive
-                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                                : 'bg-white text-red-600 border border-red-300 hover:bg-red-50'}
-                            `}
-                          >
-                            {updatingId === booking.id ? (
-                              <RefreshCw size={14} className="animate-spin" />
-                            ) : (
-                              nsCfg.icon
-                            )}
-                            {isPositive ? 'Confirm as' : 'Cancel – '} {nsCfg.label}
-                          </button>
-                        );
-                      })}
+                    {/* Status Description */}
+                    <div className={`${cfg.bg} rounded-lg p-4 border flex items-start gap-3`}>
+                      <div className={`${cfg.color} mt-0.5`}>{cfg.icon}</div>
+                      <div>
+                        <p className={`font-semibold text-sm ${cfg.color}`}>{cfg.label}</p>
+                        <p className="text-xs text-gray-600 mt-1">{cfg.description}</p>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Last updated: {formatDate(booking.updated_at)}
+                        </p>
+                      </div>
+                    </div>
 
-                      {/* Dispute button — visible on ongoing/completed */}
+                    {/* Action Buttons */}
+                    <div className="space-y-4">
+                      <StatusActionButtons
+                        bookingId={booking.id}
+                        currentStatus={booking.status}
+                        isLoading={updatingId === booking.id}
+                        onStatusChange={updateStatus}
+                      />
+
+                      {/* Dispute Button */}
                       {canDispute(booking.status) && (
                         <button
                           onClick={() => setDisputeBooking(booking)}
-                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all ml-auto"
+                          className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all"
                         >
-                          <FileWarning size={15} />
+                          <AlertTriangle size={16} />
                           File a Dispute
                         </button>
-                      )}
-
-                      {nextStatuses.length === 0 && !canDispute(booking.status) && (
-                        <p className="text-sm text-gray-500 italic bg-gray-100 rounded-lg p-4 text-center w-full">
-                          Booking is {booking.status} — no further actions available.
-                        </p>
                       )}
                     </div>
                   </div>
@@ -699,8 +1080,14 @@ export default function OwnerBookingsPage() {
 
       <style jsx global>{`
         @keyframes slide-up {
-          from { transform: translateY(20px); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
+          from {
+            transform: translateY(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
         }
         .animate-slide-up {
           animation: slide-up 0.3s ease both;
