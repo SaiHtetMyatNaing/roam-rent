@@ -18,8 +18,7 @@ import {
   MessageCircle,
   ArrowRight,
   Star,
-  Mail,
-  Phone,
+  X,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -45,7 +44,7 @@ type Booking = {
     type: string;
     color: string | null;
     price_per_day: number;
-    owner_id: string;
+    owner_id: string;           // ← used as reviewee_id
     location_city: string | null;
     location_state: string | null;
     license_plate: string;
@@ -96,13 +95,12 @@ const STATUS_CONFIG: Record<
 };
 
 function getStatusConfig(status: string | null | undefined) {
-  const s = (status || '').trim().toLowerCase() as BookingStatus;
+  const s = (status || '').trim().toLowerCase() as keyof typeof STATUS_CONFIG;
 
   if (s in STATUS_CONFIG) {
     return STATUS_CONFIG[s];
   }
 
-  // Safe fallback — never returns undefined
   return {
     label: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : 'Unknown',
     color: 'text-gray-700',
@@ -110,6 +108,182 @@ function getStatusConfig(status: string | null | undefined) {
     icon: <AlertCircle size={16} />,
     description: 'Status not recognized',
   };
+}
+
+// ─── Review Modal ────────────────────────────────────────────────────────────
+
+function ReviewModal({
+  booking,
+  onClose,
+  onSuccess,
+}: {
+  booking: Booking;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [rating, setRating] = useState<number>(0);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (rating === 0) {
+      setError('Please select a star rating');
+      return;
+    }
+    if (!comment.trim()) {
+      setError('Please write your review');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    // Get current user's email from localStorage
+    const email = localStorage.getItem('user_email');
+    if (!email) {
+      setError('Session expired. Please sign in again.');
+      setSubmitting(false);
+      return;
+    }
+
+    // Fetch current user ID from your users table
+    const { data: user, error: userErr } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email.trim().toLowerCase())
+      .single();
+
+    if (userErr || !user) {
+      setError('Could not verify your account. Please sign in again.');
+      setSubmitting(false);
+      return;
+    }
+
+    const reviewerId = user.id;
+    const revieweeId = booking.vehicle?.owner_id;
+
+    if (!revieweeId) {
+      setError('Cannot determine vehicle owner');
+      setSubmitting(false);
+      return;
+    }
+
+    const { error: reviewErr } = await supabase.from('reviews').insert({
+      booking_id: booking.id,
+      reviewer_id: reviewerId,
+      reviewee_id: revieweeId,
+      vehicle_id: booking.vehicle?.id,
+      rating,
+      comment: comment.trim(),
+    });
+
+    setSubmitting(false);
+
+    if (reviewErr) {
+      setError(reviewErr.message || 'Failed to submit review');
+    } else {
+      onSuccess();
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                <Star size={20} />
+              </div>
+              <div>
+                <h2 className="font-bold text-base">Leave a Review</h2>
+                <p className="text-xs text-amber-100">
+                  {booking.vehicle?.make} {booking.vehicle?.model} · {booking.vehicle?.year}
+                </p>
+              </div>
+            </div>
+            <button onClick={onClose}>
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-6 space-y-6">
+          <div className="text-center">
+            <p className="text-sm text-gray-600 mb-3">How would you rate this vehicle?</p>
+            <div className="flex justify-center gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star)}
+                  className={`text-4xl transition-transform hover:scale-110 focus:outline-none ${
+                    rating >= star ? 'text-amber-500' : 'text-gray-300'
+                  }`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-sm text-gray-500">
+              {rating === 0 ? 'Select stars' : `${rating} star${rating !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Your Review <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={5}
+              placeholder="Share your experience with this vehicle and owner..."
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none resize-none"
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700 flex items-center gap-2">
+              <AlertCircle size={16} />
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || rating === 0 || !comment.trim()}
+              className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm transition-all"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Star size={18} />
+                  Submit Review
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Cancel Modal ──────────────────────────────────────────────────────────
@@ -224,7 +398,7 @@ function CancelModal({
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────
+// ─── Main Customer Bookings Page ─────────────────────────────────────────────
 
 export default function CustomerBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -234,6 +408,9 @@ export default function CustomerBookingsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<Booking | null>(null);
+  // Client-side flag to hide review button after submission (session only)
+  const [reviewedBookingIds, setReviewedBookingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchBookings = async () => {
@@ -243,6 +420,7 @@ export default function CustomerBookingsPage() {
         return;
       }
 
+      // Get current user ID from your users table
       const { data: user, error: userErr } = await supabase
         .from('users')
         .select('id')
@@ -335,6 +513,10 @@ export default function CustomerBookingsPage() {
 
   const canCancel = (status: string) => status === 'pending' || status === 'confirmed';
 
+  const handleReviewSuccess = (bookingId: string) => {
+    setReviewedBookingIds((prev) => new Set([...prev, bookingId]));
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -381,6 +563,14 @@ export default function CustomerBookingsPage() {
             );
             setCancelTarget(null);
           }}
+        />
+      )}
+
+      {reviewTarget && (
+        <ReviewModal
+          booking={reviewTarget}
+          onClose={() => setReviewTarget(null)}
+          onSuccess={() => handleReviewSuccess(reviewTarget.id)}
         />
       )}
 
@@ -496,13 +686,13 @@ export default function CustomerBookingsPage() {
             const imgUrl = getVehicleImg(booking.vehicle);
             const isExpanded = expanded === booking.id;
             const days = daysBetween(booking.pickup_date, booking.dropoff_date);
+            const hasReviewed = reviewedBookingIds.has(booking.id);
 
             return (
               <div
                 key={booking.id}
                 className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all"
               >
-                {/* Header Row */}
                 <div
                   className="flex items-center gap-5 p-5 cursor-pointer hover:bg-blue-50/50 transition-colors group"
                   onClick={() => setExpanded(isExpanded ? null : booking.id)}
@@ -624,7 +814,7 @@ export default function CustomerBookingsPage() {
                       </div>
                     </div>
 
-                    {/* Vehicle Information */}
+                    {/* Vehicle Info */}
                     {booking.vehicle && (
                       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
@@ -667,7 +857,7 @@ export default function CustomerBookingsPage() {
                         })}`}
                     </p>
 
-                    {/* Customer Actions */}
+                    {/* Actions */}
                     <div className="flex flex-wrap gap-3">
                       {canCancel(booking.status) && (
                         <button
@@ -679,20 +869,24 @@ export default function CustomerBookingsPage() {
                         </button>
                       )}
 
+                      {booking.status === 'completed' && !reviewedBookingIds.has(booking.id) && (
+                        <button
+                          onClick={() => setReviewTarget(booking)}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm"
+                        >
+                          <Star size={14} />
+                          Leave a Review
+                        </button>
+                      )}
+
                       {booking.status === 'completed' && (
-                        <>
-                          <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm">
-                            <Star size={14} />
-                            Leave a Review
-                          </button>
-                          <a
-                            href="/vehicles"
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all"
-                          >
-                            <Car size={14} />
-                            Book Again
-                          </a>
-                        </>
+                        <a
+                          href="/vehicles"
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all"
+                        >
+                          <Car size={14} />
+                          Book Again
+                        </a>
                       )}
 
                       {booking.status !== 'cancelled' && (
@@ -721,18 +915,10 @@ export default function CustomerBookingsPage() {
 
       <style jsx global>{`
         @keyframes slide-up {
-          from {
-            transform: translateY(20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
-        .animate-slide-up {
-          animation: slide-up 0.3s ease both;
-        }
+        .animate-slide-up { animation: slide-up 0.3s ease both; }
       `}</style>
     </div>
   );
