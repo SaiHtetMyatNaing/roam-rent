@@ -56,6 +56,18 @@ type Booking = {
 
 type DisputePriority = 'low' | 'medium' | 'high' | 'critical';
 
+// ── Define the missing constant ─────────────────────────────────────────────
+const DISPUTE_CATEGORIES = [
+  'Vehicle Damage',
+  'Late Return',
+  'Unauthorized Use',
+  'Missing Items',
+  'Fuel Issue',
+  'Payment Dispute',
+  'No-Show',
+  'Other',
+] as const;
+
 const STATUS_TABS: BookingStatus[] = ['pending', 'confirmed', 'completed', 'cancelled'];
 
 const STATUS_CONFIG: Record<
@@ -109,6 +121,16 @@ function getStatusConfig(status: string | null | undefined) {
   };
 }
 
+const PRIORITY_CONFIG: Record<
+  DisputePriority,
+  { label: string; color: string; bg: string; border: string }
+> = {
+  low: { label: 'Low', color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
+  medium: { label: 'Medium', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+  high: { label: 'High', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
+  critical: { label: 'Critical', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+};
+
 // ─── Dispute Modal ───────────────────────────────────────────────────────────
 
 function DisputeModal({
@@ -121,7 +143,7 @@ function DisputeModal({
   onSuccess: () => void;
 }) {
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState<string>('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<DisputePriority>('medium');
   const [submitting, setSubmitting] = useState(false);
@@ -362,15 +384,12 @@ export default function AdminBookingsPage() {
     if (error) {
       console.error('Failed to update status:', error);
       setError('Failed to update booking status. Please try again.');
-      // Revert optimistic update on error
+      // Revert optimistic update
       setBookings((prev) =>
         prev.map((b) =>
           b.id === bookingId ? { ...b, status: bookings.find((bb) => bb.id === bookingId)?.status || '' } : b
         )
       );
-    } else {
-      // Success → keep the optimistic change
-      // Optional: show success message / toast
     }
 
     setUpdatingBookingId(null);
@@ -448,8 +467,6 @@ export default function AdminBookingsPage() {
           onClose={() => setDisputeBooking(null)}
           onSuccess={() => {
             setDisputeBooking(null);
-            // Optional: refresh after dispute
-            // fetchBookings();
           }}
         />
       )}
@@ -690,10 +707,10 @@ export default function AdminBookingsPage() {
                     </p>
 
                     <div className="space-y-4">
-                      {/* Status Update Buttons - Admin can change any status */}
+                      {/* Status Update - Admin only */}
                       <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3 flex items-center gap-2">
-                          <RefreshCw size={14} /> Update Booking Status
+                          <RefreshCw size={14} /> Update Status
                         </p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           {STATUS_TABS.map((status) => {
@@ -702,12 +719,12 @@ export default function AdminBookingsPage() {
                             return (
                               <button
                                 key={status}
-                                disabled={isCurrent || isUpdating}
+                                disabled={isCurrent || updatingBookingId === booking.id}
                                 onClick={() => updateBookingStatus(booking.id, status)}
                                 className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 capitalize transition-all ${
                                   isCurrent
                                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : isUpdating
+                                    : updatingBookingId === booking.id
                                     ? 'bg-gray-300 text-gray-600 cursor-wait'
                                     : status === 'confirmed'
                                     ? 'bg-green-600 hover:bg-green-700 text-white'
@@ -718,7 +735,7 @@ export default function AdminBookingsPage() {
                                     : 'bg-amber-600 hover:bg-amber-700 text-white'
                                 }`}
                               >
-                                {isUpdating && updatingBookingId === booking.id ? (
+                                {updatingBookingId === booking.id ? (
                                   <RefreshCw size={14} className="animate-spin" />
                                 ) : (
                                   cfg.icon
