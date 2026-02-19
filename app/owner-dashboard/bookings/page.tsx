@@ -476,9 +476,9 @@ export default function OwnerBookingsPage() {
 
   useEffect(() => {
     if (bookings.length > 0) {
-      const unknown = bookings.filter(b => !STATUS_CONFIG[b.status as any]);
+      const unknown = bookings.filter((b) => !(b.status in STATUS_CONFIG));
       if (unknown.length > 0) {
-        console.warn('Bookings with unrecognized status:', unknown.map(b => ({
+        console.warn('Bookings with unrecognized status:', unknown.map((b) => ({
           id: b.id.slice(0, 8),
           status: b.status,
         })));
