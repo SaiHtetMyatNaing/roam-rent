@@ -92,6 +92,33 @@ const STATUS_CONFIG: Record<
   },
 };
 
+function getStatusConfig(status: string | null | undefined) {
+  if (!status || status.trim() === '') {
+    console.warn('Booking has missing or empty status', { status });
+    return {
+      label: 'Unknown',
+      color: 'text-gray-600',
+      bg: 'bg-gray-100 border-gray-300',
+      icon: <AlertCircle size={16} className="text-gray-500" />,
+    };
+  }
+
+  const normalized = status.toLowerCase() as BookingStatus;
+  const cfg = STATUS_CONFIG[normalized];
+
+  if (!cfg) {
+    console.warn(`Unknown booking status: "${status}"`);
+    return {
+      label: status.charAt(0).toUpperCase() + status.slice(1).toLowerCase(),
+      color: 'text-purple-700',
+      bg: 'bg-purple-50 border-purple-200',
+      icon: <AlertCircle size={16} className="text-purple-600" />,
+    };
+  }
+
+  return cfg;
+}
+
 const PRIORITY_CONFIG: Record<
   DisputePriority,
   { label: string; color: string; bg: string; border: string }
@@ -184,7 +211,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-red-100 rounded-lg flex items-center justify-center">
@@ -208,7 +234,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
         </div>
 
         <div className="px-6 py-5 space-y-5">
-          {/* Booking reference */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm space-y-1">
             <p className="text-gray-500 text-xs font-semibold uppercase tracking-wide mb-2">
               Booking Reference
@@ -225,7 +250,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             </p>
           </div>
 
-          {/* Category */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Category <span className="text-red-500">*</span>
@@ -248,7 +272,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             </div>
           </div>
 
-          {/* Title */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               Title <span className="text-red-500">*</span>
@@ -262,7 +285,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             />
           </div>
 
-          {/* Description */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               Description <span className="text-red-500">*</span>
@@ -276,7 +298,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             />
           </div>
 
-          {/* Priority */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
             <div className="flex gap-2">
@@ -300,7 +321,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             </div>
           </div>
 
-          {/* Error */}
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
               <AlertCircle size={15} className="flex-shrink-0" />
@@ -308,7 +328,6 @@ function DisputeModal({ booking, submitterId, onClose, onSuccess }: DisputeModal
             </div>
           )}
 
-          {/* Submit */}
           <button
             onClick={handleSubmit}
             disabled={submitting}
@@ -341,14 +360,10 @@ function SuccessToast({ message, isError, onClose }: { message: string; isError?
 
   return (
     <div className={`fixed bottom-6 right-6 z-50 bg-white rounded-xl shadow-xl px-5 py-4 flex items-center gap-3 animate-slide-up ${
-      isError 
-        ? 'border border-red-200' 
-        : 'border border-green-200'
+      isError ? 'border border-red-200' : 'border border-green-200'
     }`}>
       <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
-        isError 
-          ? 'bg-red-100' 
-          : 'bg-green-100'
+        isError ? 'bg-red-100' : 'bg-green-100'
       }`}>
         {isError ? (
           <AlertCircle size={18} className="text-red-600" />
@@ -357,11 +372,7 @@ function SuccessToast({ message, isError, onClose }: { message: string; isError?
         )}
       </div>
       <div className="flex-1">
-        <p className={`font-semibold text-sm ${
-          isError 
-            ? 'text-red-900' 
-            : 'text-gray-900'
-        }`}>
+        <p className={`font-semibold text-sm ${isError ? 'text-red-900' : 'text-gray-900'}`}>
           {message}
         </p>
       </div>
@@ -432,12 +443,12 @@ export default function OwnerBookingsPage() {
         .from('bookings')
         .select(
           `
-        id, pickup_date, dropoff_date, pickup_location, dropoff_location,
-        total_price, status, created_at, updated_at,
-        customer:customer_id (first_name, last_name, email, phone, avatar_url),
-        vehicle:vehicle_id (id, make, model, year, license_plate,
-          vehicle_images (url, is_primary))
-      `
+          id, pickup_date, dropoff_date, pickup_location, dropoff_location,
+          total_price, status, created_at, updated_at,
+          customer:customer_id (first_name, last_name, email, phone, avatar_url),
+          vehicle:vehicle_id (id, make, model, year, license_plate,
+            vehicle_images (url, is_primary))
+        `
         )
         .in('vehicle_id', vehicleIds)
         .order('created_at', { ascending: false });
@@ -447,13 +458,13 @@ export default function OwnerBookingsPage() {
       } else {
         const transformedData = (data ?? []).map((item: any) => ({
           ...item,
-          customer: Array.isArray(item.customer)
-            ? item.customer[0] ?? null
-            : item.customer ?? null,
+          customer: Array.isArray(item.customer) ? item.customer[0] ?? null : item.customer ?? null,
           vehicle: Array.isArray(item.vehicle) ? item.vehicle[0] ?? null : item.vehicle ?? null,
         }));
         setBookings(transformedData as Booking[]);
       }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load bookings');
     } finally {
       setLoading(false);
     }
@@ -462,6 +473,18 @@ export default function OwnerBookingsPage() {
   useEffect(() => {
     fetchBookings();
   }, []);
+
+  useEffect(() => {
+    if (bookings.length > 0) {
+      const unknown = bookings.filter(b => !STATUS_CONFIG[b.status as any]);
+      if (unknown.length > 0) {
+        console.warn('Bookings with unrecognized status:', unknown.map(b => ({
+          id: b.id.slice(0, 8),
+          status: b.status,
+        })));
+      }
+    }
+  }, [bookings]);
 
   const updateStatus = async (bookingId: string, newStatus: BookingStatus) => {
     setUpdatingId(bookingId);
@@ -488,7 +511,7 @@ export default function OwnerBookingsPage() {
   };
 
   const filtered = bookings.filter((b) => {
-    const s = searchTerm.toLowerCase();
+    const s = searchTerm.toLowerCase().trim();
     const matchSearch =
       (b.customer?.first_name?.toLowerCase() ?? '').includes(s) ||
       (b.customer?.last_name?.toLowerCase() ?? '').includes(s) ||
@@ -559,7 +582,6 @@ export default function OwnerBookingsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Dispute Modal */}
       {disputeBooking && ownerId && (
         <DisputeModal
           booking={disputeBooking}
@@ -572,10 +594,8 @@ export default function OwnerBookingsPage() {
         />
       )}
 
-      {/* Toast */}
       {toast && <SuccessToast message={toast.message} isError={toast.isError} onClose={() => setToast(null)} />}
 
-      {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white px-6 py-10 shadow-lg">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
@@ -588,7 +608,6 @@ export default function OwnerBookingsPage() {
             </div>
           </div>
 
-          {/* Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
               { label: 'Total', value: stats.total, icon: <Calendar size={16} />, bg: 'bg-white/10' },
@@ -613,11 +632,9 @@ export default function OwnerBookingsPage() {
         </div>
       </div>
 
-      {/* Controls */}
       <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-            {/* Search */}
             <div className="relative w-full sm:w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input
@@ -629,7 +646,6 @@ export default function OwnerBookingsPage() {
               />
             </div>
 
-            {/* Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-1 w-full sm:w-auto">
               <button
                 onClick={() => setActiveTab('all')}
@@ -661,7 +677,6 @@ export default function OwnerBookingsPage() {
         </div>
       </div>
 
-      {/* Bookings List */}
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-5">
         {filtered.length === 0 ? (
           <div className="text-center py-24 bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -675,7 +690,7 @@ export default function OwnerBookingsPage() {
           </div>
         ) : (
           filtered.map((booking) => {
-            const cfg = STATUS_CONFIG[booking.status];
+            const cfg = getStatusConfig(booking.status);
             const imgUrl = getVehicleImg(booking.vehicle);
             const isExpanded = expanded === booking.id;
             const isPending = booking.status === 'pending';
@@ -684,12 +699,10 @@ export default function OwnerBookingsPage() {
 
             return (
               <div key={booking.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all">
-                {/* Header */}
                 <div
                   className="flex items-center gap-5 p-5 cursor-pointer hover:bg-blue-50/50 transition-colors group"
                   onClick={() => setExpanded(isExpanded ? null : booking.id)}
                 >
-                  {/* Thumbnail */}
                   <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 group-hover:border-blue-300">
                     {imgUrl ? (
                       <img src={imgUrl} alt="vehicle" className="w-full h-full object-cover" />
@@ -700,7 +713,6 @@ export default function OwnerBookingsPage() {
                     )}
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
@@ -711,7 +723,9 @@ export default function OwnerBookingsPage() {
                           {booking.customer ? `${booking.customer.first_name} ${booking.customer.last_name}` : '—'}
                         </p>
                       </div>
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap ${cfg.bg} ${cfg.color}`}>
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap ${cfg.bg} ${cfg.color}`}
+                      >
                         {cfg.icon} {cfg.label}
                       </span>
                     </div>
@@ -721,13 +735,14 @@ export default function OwnerBookingsPage() {
                     </div>
                   </div>
 
-                  <ChevronDown size={20} className={`text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  <ChevronDown
+                    size={20}
+                    className={`text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                  />
                 </div>
 
-                {/* Expanded */}
                 {isExpanded && (
                   <div className="border-t border-gray-100 px-6 py-6 bg-gray-50/50 space-y-6">
-                    {/* Customer */}
                     <div className="bg-white rounded-lg border border-gray-200 p-4">
                       <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
                         <User size={14} /> Customer
@@ -749,7 +764,6 @@ export default function OwnerBookingsPage() {
                       )}
                     </div>
 
-                    {/* Trip */}
                     <div className="bg-white rounded-lg border border-gray-200 p-4">
                       <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
                         <MapPin size={14} /> Trip
@@ -760,7 +774,6 @@ export default function OwnerBookingsPage() {
                       </div>
                     </div>
 
-                    {/* Vehicle */}
                     {booking.vehicle && (
                       <div className="bg-white rounded-lg border border-gray-200 p-4">
                         <p className="text-xs font-semibold text-gray-600 uppercase mb-3 flex items-center gap-2">
@@ -774,7 +787,6 @@ export default function OwnerBookingsPage() {
                       </div>
                     )}
 
-                    {/* Price */}
                     <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                       <div className="flex justify-between items-center">
                         <span className="font-semibold text-gray-700">Total Value</span>
@@ -782,7 +794,6 @@ export default function OwnerBookingsPage() {
                       </div>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="space-y-3">
                       {isPending && (
                         <div className="flex gap-3">
