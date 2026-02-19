@@ -12,20 +12,20 @@ import {
   ChevronDown,
   DollarSign,
   Search,
-  RefreshCw,
-  X,
+  Ban,
   Loader2,
   CreditCard,
-  Ban,
   MessageCircle,
   ArrowRight,
   Star,
+  Mail,
+  Phone,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 const supabase = createClient();
 
-type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'unknown';
+type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 
 type Booking = {
   id: string;
@@ -34,7 +34,7 @@ type Booking = {
   pickup_location: string;
   dropoff_location: string;
   total_price: number;
-  status: string; // changed from BookingStatus to string to be more defensive
+  status: string;
   created_at: string;
   updated_at: string;
   vehicle: {
@@ -93,25 +93,24 @@ const STATUS_CONFIG: Record<
     icon: <XCircle size={16} />,
     description: 'Booking cancelled',
   },
-  unknown: {
-    label: 'Unknown',
+};
+
+function getStatusConfig(status: string | null | undefined) {
+  const s = (status || '').trim().toLowerCase() as BookingStatus;
+
+  if (s in STATUS_CONFIG) {
+    return STATUS_CONFIG[s];
+  }
+
+  // Safe fallback — never returns undefined
+  return {
+    label: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : 'Unknown',
     color: 'text-gray-700',
     bg: 'bg-gray-100 border-gray-300',
     icon: <AlertCircle size={16} />,
     description: 'Status not recognized',
-  },
-};
-
-// Helper to safely get status config
-const getStatusConfig = (status: string | null | undefined) => {
-  const normalized = (status || 'unknown').toLowerCase() as BookingStatus;
-  
-  if (STATUS_CONFIG[normalized]) {
-    return STATUS_CONFIG[normalized];
-  }
-  
-  return STATUS_CONFIG.unknown;
-};
+  };
+}
 
 // ─── Cancel Modal ──────────────────────────────────────────────────────────
 
@@ -130,12 +129,14 @@ function CancelModal({
   const handleCancel = async () => {
     setLoading(true);
     setError(null);
+
     const { error: err } = await supabase
       .from('bookings')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', booking.id);
 
     setLoading(false);
+
     if (err) {
       setError(err.message);
     } else {
@@ -227,7 +228,6 @@ function CancelModal({
 
 export default function CustomerBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [customerId, setCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | BookingStatus>('all');
@@ -243,19 +243,17 @@ export default function CustomerBookingsPage() {
         return;
       }
 
-      const { data: user } = await supabase
+      const { data: user, error: userErr } = await supabase
         .from('users')
         .select('id')
         .eq('email', email.trim().toLowerCase())
         .single();
 
-      if (!user) {
-        setError('User not found.');
+      if (userErr || !user) {
+        setError('User not found. Please sign in again.');
         setLoading(false);
         return;
       }
-
-      setCustomerId(user.id);
 
       const { data, error: err } = await supabase
         .from('bookings')
@@ -276,9 +274,9 @@ export default function CustomerBookingsPage() {
       if (err) {
         setError(err.message);
       } else {
-        const normalized: Booking[] = (data ?? []).map((row: any) => ({
+        const normalized = (data ?? []).map((row: any) => ({
           ...row,
-          status: row.status || 'unknown',
+          status: row.status || '',
           vehicle: Array.isArray(row.vehicle) ? row.vehicle[0] ?? null : row.vehicle ?? null,
         }));
         setBookings(normalized);
@@ -332,12 +330,8 @@ export default function CustomerBookingsPage() {
     return primary?.url ?? v.vehicle_images[0]?.url ?? null;
   };
 
-  const daysBetween = (a: string, b: string) => {
-    return Math.max(
-      0,
-      Math.ceil((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000)
-    );
-  };
+  const daysBetween = (a: string, b: string) =>
+    Math.max(0, Math.ceil((new Date(b).getTime() - new Date(a).getTime()) / 86400000));
 
   const canCancel = (status: string) => status === 'pending' || status === 'confirmed';
 
@@ -359,10 +353,8 @@ export default function CustomerBookingsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="text-red-600" size={24} />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Bookings</h3>
+          <AlertCircle className="text-red-600 mx-auto mb-4" size={48} />
+          <h3 className="text-xl font-semibold mb-2">Error Loading Bookings</h3>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => window.location.reload()}
@@ -409,37 +401,11 @@ export default function CustomerBookingsPage() {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {[
-              {
-                label: 'Total Bookings',
-                value: stats.total,
-                icon: <Calendar size={16} />,
-                bg: 'bg-white/10',
-              },
-              {
-                label: 'Pending',
-                value: stats.pending,
-                icon: <Clock size={16} />,
-                bg: 'bg-amber-500/20',
-                alert: stats.pending > 0,
-              },
-              {
-                label: 'Confirmed',
-                value: stats.confirmed,
-                icon: <CheckCircle2 size={16} />,
-                bg: 'bg-emerald-500/20',
-              },
-              {
-                label: 'Completed',
-                value: stats.completed,
-                icon: <CheckCircle2 size={16} />,
-                bg: 'bg-slate-500/20',
-              },
-              {
-                label: 'Total Spent',
-                value: `$${stats.spent.toFixed(0)}`,
-                icon: <DollarSign size={16} />,
-                bg: 'bg-green-500/20',
-              },
+              { label: 'Total Bookings', value: stats.total, icon: <Calendar size={16} />, bg: 'bg-white/10' },
+              { label: 'Pending', value: stats.pending, icon: <Clock size={16} />, bg: 'bg-amber-500/20', alert: stats.pending > 0 },
+              { label: 'Confirmed', value: stats.confirmed, icon: <CheckCircle2 size={16} />, bg: 'bg-emerald-500/20' },
+              { label: 'Completed', value: stats.completed, icon: <CheckCircle2 size={16} />, bg: 'bg-slate-500/20' },
+              { label: 'Total Spent', value: `$${stats.spent.toFixed(0)}`, icon: <DollarSign size={16} />, bg: 'bg-green-500/20' },
             ].map((s) => (
               <div
                 key={s.label}
@@ -495,7 +461,7 @@ export default function CustomerBookingsPage() {
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                   >
-                    {tab} {count > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400">{count}</span>}
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)} {count > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400">{count}</span>}
                   </button>
                 );
               })}
@@ -536,6 +502,7 @@ export default function CustomerBookingsPage() {
                 key={booking.id}
                 className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all"
               >
+                {/* Header Row */}
                 <div
                   className="flex items-center gap-5 p-5 cursor-pointer hover:bg-blue-50/50 transition-colors group"
                   onClick={() => setExpanded(isExpanded ? null : booking.id)}
@@ -590,15 +557,14 @@ export default function CustomerBookingsPage() {
 
                   <ChevronDown
                     size={20}
-                    className={`text-gray-500 transition-transform flex-shrink-0 ${
-                      isExpanded ? 'rotate-180' : ''
-                    }`}
+                    className={`text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
                   />
                 </div>
 
                 {isExpanded && (
                   <div className="border-t border-gray-100 px-6 py-6 bg-gray-50/50 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {/* Trip Details */}
                       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
                           <Calendar size={14} /> Trip Details
@@ -625,6 +591,7 @@ export default function CustomerBookingsPage() {
                         </div>
                       </div>
 
+                      {/* Price Breakdown */}
                       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
                           <CreditCard size={14} /> Price Breakdown
@@ -632,12 +599,10 @@ export default function CustomerBookingsPage() {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span className="text-gray-500">
-                              {days} day{days !== 1 ? 's' : ''} × ${booking.vehicle?.price_per_day ?? '—'}
+                              {days} day{days !== 1 ? 's' : ''} × ${booking.vehicle?.price_per_day?.toFixed(2) ?? '—'}
                             </span>
                             <span className="font-medium text-gray-900">
-                              ${(
-                                (booking.vehicle?.price_per_day ?? 0) * days
-                              ).toFixed(2)}
+                              ${((booking.vehicle?.price_per_day ?? 0) * days).toFixed(2)}
                             </span>
                           </div>
                           <div className="flex justify-between">
@@ -659,46 +624,34 @@ export default function CustomerBookingsPage() {
                       </div>
                     </div>
 
+                    {/* Vehicle Information */}
                     {booking.vehicle && (
                       <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4 flex items-center gap-2">
                           <Car size={14} /> Vehicle Information
                         </p>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              Make & Model
-                            </p>
-                            <p className="font-medium text-gray-900">
-                              {booking.vehicle.make} {booking.vehicle.model}
-                            </p>
+                            <p className="text-gray-500">Make & Model</p>
+                            <p className="font-medium">{booking.vehicle.make} {booking.vehicle.model}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              Year
-                            </p>
-                            <p className="font-medium text-gray-900">{booking.vehicle.year}</p>
+                            <p className="text-gray-500">Year</p>
+                            <p className="font-medium">{booking.vehicle.year}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              Type
-                            </p>
-                            <p className="font-medium text-gray-900">
-                              {booking.vehicle.type}
-                            </p>
+                            <p className="text-gray-500">Type</p>
+                            <p className="font-medium">{booking.vehicle.type}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
-                              License Plate
-                            </p>
-                            <p className="font-mono font-semibold text-gray-900">
-                              {booking.vehicle.license_plate}
-                            </p>
+                            <p className="text-gray-500">License Plate</p>
+                            <p className="font-mono font-semibold">{booking.vehicle.license_plate}</p>
                           </div>
                         </div>
                       </div>
                     )}
 
+                    {/* Metadata */}
                     <p className="text-xs text-gray-500">
                       Booked on{' '}
                       {new Date(booking.created_at).toLocaleDateString('en-US', {
@@ -714,91 +667,49 @@ export default function CustomerBookingsPage() {
                         })}`}
                     </p>
 
-                    <div className="space-y-4">
-                      <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3 flex items-center gap-2">
-                          <CheckCircle2 size={14} /> Booking Status
-                        </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          {STATUS_TABS.map((status) => {
-                            const isCurrentStatus = booking.status === status;
-                            const statusCfg = STATUS_CONFIG[status];
+                    {/* Customer Actions */}
+                    <div className="flex flex-wrap gap-3">
+                      {canCancel(booking.status) && (
+                        <button
+                          onClick={() => setCancelTarget(booking)}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all"
+                        >
+                          <Ban size={14} />
+                          Cancel Booking
+                        </button>
+                      )}
 
-                            let buttonColor = 'bg-gray-200 text-gray-700 hover:bg-gray-300';
-
-                            if (!isCurrentStatus) {
-                              if (status === 'confirmed') {
-                                buttonColor = 'bg-green-600 hover:bg-green-700 text-white';
-                              } else if (status === 'completed') {
-                                buttonColor = 'bg-blue-600 hover:bg-blue-700 text-white';
-                              } else if (status === 'cancelled') {
-                                buttonColor = 'bg-red-600 hover:bg-red-700 text-white';
-                              } else if (status === 'pending') {
-                                buttonColor = 'bg-amber-600 hover:bg-amber-700 text-white';
-                              }
-                            }
-
-                            return (
-                              <button
-                                key={status}
-                                disabled={isCurrentStatus}
-                                className={`py-2 px-3 rounded-lg font-medium text-xs transition-all flex items-center justify-center gap-1.5 capitalize ${
-                                  isCurrentStatus
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : buttonColor
-                                }`}
-                              >
-                                {statusCfg.icon}
-                                {status}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-3">
-                        {canCancel(booking.status) && (
-                          <button
-                            onClick={() => setCancelTarget(booking)}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-300 hover:bg-red-50 transition-all"
-                          >
-                            <Ban size={14} />
-                            Cancel Booking
+                      {booking.status === 'completed' && (
+                        <>
+                          <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm">
+                            <Star size={14} />
+                            Leave a Review
                           </button>
-                        )}
-
-                        {booking.status === 'completed' && (
-                          <>
-                            <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm">
-                              <Star size={14} />
-                              Leave a Review
-                            </button>
-                            <a
-                              href="/vehicles"
-                              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all"
-                            >
-                              <Car size={14} />
-                              Book Again
-                            </a>
-                          </>
-                        )}
-
-                        {booking.status !== 'cancelled' && (
                           <a
-                            href="/support"
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all ml-auto"
+                            href="/vehicles"
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all"
                           >
-                            <MessageCircle size={14} />
-                            Get Support
+                            <Car size={14} />
+                            Book Again
                           </a>
-                        )}
+                        </>
+                      )}
 
-                        {booking.status === 'cancelled' && (
-                          <p className="text-sm text-gray-500 italic self-center">
-                            This booking was cancelled.
-                          </p>
-                        )}
-                      </div>
+                      {booking.status !== 'cancelled' && (
+                        <a
+                          href="/support"
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all ml-auto"
+                        >
+                          <MessageCircle size={14} />
+                          Get Support
+                        </a>
+                      )}
+
+                      {booking.status === 'cancelled' && (
+                        <p className="text-sm text-gray-500 italic self-center ml-auto">
+                          This booking was cancelled.
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
